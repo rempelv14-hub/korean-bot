@@ -18,7 +18,10 @@ from flask import Flask
 logging.basicConfig(level=logging.INFO)
 
 # ================== ТОКЕН ==================
-BOT_TOKEN = os.environ.get("7953818340:AAHjoG8qQG6abqVxuHseo4AH75VUxjsGsyk")
+# Исправлено: читаем токен из переменной окружения BOT_TOKEN
+BOT_TOKEN = os.environ.get("7953818340:AAGe2Fr13_BKsa8U-68PWt33N9SdfBYvrzE")
+if not BOT_TOKEN:
+    raise ValueError("Переменная окружения BOT_TOKEN не найдена! Проверь Environment Variables в Railway.")
 
 # ================== MEDIA ==================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
