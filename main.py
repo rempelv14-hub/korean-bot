@@ -18,7 +18,7 @@ from flask import Flask
 logging.basicConfig(level=logging.INFO)
 
 # ================== ТОКЕН ==================
-BOT_TOKEN = os.environ.get("7953818340:AAEDob_LkkKPiB7MQTrqg6vdBWUvzZ8i4TM")
+BOT_TOKEN = os.environ.get("")
 
 if not BOT_TOKEN:
     logging.error("⚠️ BOT_TOKEN не найден! Проверь Worker Variables на Railway.")
@@ -275,3 +275,4 @@ def home():
 if __name__ == "__main__":
     Thread(target=lambda: asyncio.run(start_bot())).start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
