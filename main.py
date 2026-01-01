@@ -2,20 +2,23 @@ import asyncio
 import os
 import logging
 from datetime import datetime, timedelta
+
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from tzlocal import get_localzone
+
 from flask import Flask
-import multiprocessing
+from threading import Thread
 
 # ================== ЛОГИРОВАНИЕ ==================
 logging.basicConfig(level=logging.INFO)
 
 # ================== ТОКЕН ==================
-BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Только из переменных окружения
+BOT_TOKEN = os.environ.get("BOT_TOKEN")  # токен только через переменную окружения на Railway
 
 if not BOT_TOKEN:
     logging.error("⚠️ BOT_TOKEN не найден! Проверь Worker Variables на Railway.")
@@ -24,7 +27,7 @@ if not BOT_TOKEN:
 # ================== MEDIA ==================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
-VIDEO_URL = "https://youtu.be/uKKyn7wCKXE?si=Klz0s_l-jsvJCVTv"
+VIDEO_URL = "https://youtu.be/uKKyn7wCKXE?si=Klz0s_l-jsvJCVTv"  # YouTube ссылка
 
 def find_pdf():
     if not os.path.exists(MEDIA_DIR):
@@ -224,6 +227,10 @@ async def start_course(callback: CallbackQuery):
     user_id = callback.from_user.id
     await callback.answer()
 
+    # исправлено: проверяем наличие пользователя в словаре
+    if user_id not in active_users:
+        active_users[user_id] = {"paid": False, "jobs": []}
+
     if active_users[user_id]["jobs"]:
         await callback.message.answer(
             "Вы уже запустили курс! ⏳\n"
@@ -237,6 +244,9 @@ async def start_course(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("pay_"))
 async def handle_payment(callback: CallbackQuery):
     user_id = callback.from_user.id
+    if user_id not in active_users:
+        active_users[user_id] = {"paid": False, "jobs": []}
+
     active_users[user_id]["paid"] = True
 
     for job in active_users[user_id]["jobs"]:
@@ -248,6 +258,11 @@ async def handle_payment(callback: CallbackQuery):
         f"Пожалуйста, отправьте чек оплаты в Telegram: https://t.me/minimalkor"
     )
 
+# ================== ЗАПУСК ==================
+async def start_bot():
+    scheduler.start()
+    await dp.start_polling(bot)
+
 # ================== FLASK ==================
 app = Flask(__name__)
 
@@ -255,15 +270,7 @@ app = Flask(__name__)
 def home():
     return "Bot is running!"
 
-# ================== MAIN ==================
 if __name__ == "__main__":
-    # Flask в отдельном процессе
-    def run_flask():
-        app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), use_reloader=False)
-
-    flask_process = multiprocessing.Process(target=run_flask)
-    flask_process.start()
-
-    # Aiogram запускается в главном процессе
-    scheduler.start()
-    asyncio.run(dp.start_polling(bot))
+    # запускаем бота в основном потоке
+    asyncio.run(start_bot())
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
