@@ -7,7 +7,7 @@ from threading import Thread
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
-from aiogram.utils.exceptions import TelegramError
+from aiogram.exceptions import TelegramError
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
@@ -20,15 +20,9 @@ logging.basicConfig(level=logging.INFO)
 
 # ================== ТОКЕН ==================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-bot = None
 if not BOT_TOKEN:
     logging.error("⚠️ BOT_TOKEN не найден! Проверь Worker Variables на Railway.")
-else:
-    try:
-        bot = Bot(token=BOT_TOKEN)
-    except Exception as e:
-        logging.error(f"❌ Не удалось создать Bot: {e}")
-        bot = None
+    BOT_TOKEN = None  # чтобы бот не падал
 
 # ================== MEDIA ==================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -73,6 +67,7 @@ fifth_message_kb = InlineKeyboardMarkup(
 )
 
 # ================== BOT ==================
+bot = Bot(token=BOT_TOKEN) if BOT_TOKEN else None
 dp = Dispatcher()
 router = Router()
 dp.include_router(router)
@@ -93,7 +88,7 @@ async def send_video(message: Message):
             f"👉 Смотри видео: {VIDEO_URL}\n"
             "После просмотра тебя ждёт ещё один бонус ✨\n(я пришлю его чуть позже)"
         )
-    except Exception as e:
+    except TelegramError as e:
         logging.error(f"Ошибка при отправке видео: {e}")
 
 async def send_pdf(message: Message):
@@ -107,7 +102,7 @@ async def send_pdf(message: Message):
             await message.answer_document(FSInputFile(PDF_PATH))
         else:
             await message.answer("⚠️ PDF не найден")
-    except Exception as e:
+    except TelegramError as e:
         logging.error(f"Ошибка при отправке PDF: {e}")
 
 async def send_course_presentation(message: Message):
@@ -144,7 +139,7 @@ async def send_course_presentation(message: Message):
             "Цена: 24990 тенге / 3990 ₽"
         )
         await message.answer(text, reply_markup=course_kb)
-    except Exception as e:
+    except TelegramError as e:
         logging.error(f"Ошибка при отправке презентации курса: {e}")
 
 async def send_useful_tips(message: Message):
@@ -158,7 +153,7 @@ async def send_useful_tips(message: Message):
             "Идеальное комбо = Правильное произношение + словарный запас",
             reply_markup=fifth_message_kb
         )
-    except Exception as e:
+    except TelegramError as e:
         logging.error(f"Ошибка при отправке полезных советов: {e}")
 
 async def send_final_message(message: Message):
@@ -173,14 +168,11 @@ async def send_final_message(message: Message):
             "Цена: 12990 тенге / 1990 ₽"
         )
         await message.answer(text, reply_markup=subscription_kb)
-    except Exception as e:
+    except TelegramError as e:
         logging.error(f"Ошибка при отправке финального сообщения: {e}")
 
 # ================== ФУНКЦИЯ ЦЕПОЧКИ ==================
 def schedule_chain(user_id: int, message: Message):
-    if not bot:  # если бот не создан, ничего не делаем
-        return
-
     jobs = []
 
     async def send_if_not_paid(func, msg):
@@ -190,7 +182,7 @@ def schedule_chain(user_id: int, message: Message):
         if not active_users[user_id]["paid"]:
             try:
                 await func(msg)
-            except Exception as e:
+            except TelegramError as e:
                 logging.error(f"Ошибка при отправке сообщения пользователю {msg.from_user.id}: {e}")
         else:
             for job in active_users[user_id]["jobs"]:
@@ -213,62 +205,62 @@ def schedule_chain(user_id: int, message: Message):
     active_users[user_id]["jobs"] = jobs
 
 # ================== ХЕНДЛЕРЫ ==================
-if bot:  # подключаем хендлеры только если бот создан
-    @router.message(CommandStart())
-    async def start(message: Message):
-        user_id = message.from_user.id
-        if user_id not in active_users:
-            active_users[user_id] = {"paid": False, "jobs": []}
+@router.message(CommandStart())
+async def start(message: Message):
+    user_id = message.from_user.id
+    if user_id not in active_users:
+        active_users[user_id] = {"paid": False, "jobs": []}
 
-        await message.answer(
-            "안녕하세요!\n"
-            "Рада приветствовать тебя! Я — твой персональный бот-помощник корейского\n"
-            "языка 🇰🇷\n"
-            "Система KOREAN MINIMAL - это новый практический курс о том, как:\n"
-            "• учить корейский системно, уделяя минимум времени;\n"
-            "• научиться быстро и правильно читать и писать;\n"
-            "• легко запоминать слова и грамматику;\n"
-            "• двигаться без хаоса и перегруза.\n"
-            "Готов(а) начать путь к корейскому, который действительно работает?",
-            reply_markup=start_kb
+    await message.answer(
+        "안녕하세요!\n"
+        "Рада приветствовать тебя! Я — твой персональный бот-помощник корейского\n"
+        "языка 🇰🇷\n"
+        "Система KOREAN MINIMAL - это новый практический курс о том, как:\n"
+        "• учить корейский системно, уделяя минимум времени;\n"
+        "• научиться быстро и правильно читать и писать;\n"
+        "• легко запоминать слова и грамматику;\n"
+        "• двигаться без хаоса и перегруза.\n"
+        "Готов(а) начать путь к корейскому, который действительно работает?",
+        reply_markup=start_kb
+    )
+
+@router.callback_query(F.data == "start_course")
+async def start_course(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    await callback.answer()
+
+    if active_users[user_id]["jobs"]:
+        await callback.message.answer(
+            "Вы уже запустили курс! ⏳\n"
+            "Дождитесь следующих сообщений или оплатите тариф, чтобы продолжить."
         )
+        return
 
-    @router.callback_query(F.data == "start_course")
-    async def start_course(callback: CallbackQuery):
-        user_id = callback.from_user.id
-        await callback.answer()
-
-        if active_users[user_id]["jobs"]:
-            await callback.message.answer(
-                "Вы уже запустили курс! ⏳\n"
-                "Дождитесь следующих сообщений или оплатите тариф, чтобы продолжить."
-            )
-            return
-
+    if bot:
         await send_video(callback.message)
         schedule_chain(user_id, callback.message)
+    else:
+        await callback.message.answer("⚠️ Бот не активен. Проверь BOT_TOKEN.")
 
-    @router.callback_query(F.data.startswith("pay_"))
-    async def handle_payment(callback: CallbackQuery):
-        user_id = callback.from_user.id
-        active_users[user_id]["paid"] = True
+@router.callback_query(F.data.startswith("pay_"))
+async def handle_payment(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    active_users[user_id]["paid"] = True
 
-        for job in active_users[user_id]["jobs"]:
-            job.remove()
-        active_users[user_id]["jobs"] = []
+    for job in active_users[user_id]["jobs"]:
+        job.remove()
+    active_users[user_id]["jobs"] = []
 
-        await callback.message.answer(
-            f"Вы выбрали тариф ✅\n"
-            f"Пожалуйста, отправьте чек оплаты в Telegram: https://t.me/minimalkor"
-        )
+    await callback.message.answer(
+        f"Вы выбрали тариф ✅\n"
+        f"Пожалуйста, отправьте чек оплаты в Telegram: https://t.me/minimalkor"
+    )
 
 # ================== ЗАПУСК ==================
 async def start_bot():
     scheduler.start()
     if bot:
         await dp.start_polling(bot)
-    else:
-        logging.warning("Бот не создан — пропускаем polling.")
 
 # ================== FLASK ==================
 app = Flask(__name__)
