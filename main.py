@@ -2,23 +2,20 @@ import asyncio
 import os
 import logging
 from datetime import datetime, timedelta
-from threading import Thread
-
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
-
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from tzlocal import get_localzone
-
 from flask import Flask
+import multiprocessing
 
 # ================== ЛОГИРОВАНИЕ ==================
 logging.basicConfig(level=logging.INFO)
 
 # ================== ТОКЕН ==================
-BOT_TOKEN = os.environ.get("BOT_TOKEN")  # токен берём только из переменных окружения
+BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Токен берется только из переменных окружения
 
 if not BOT_TOKEN:
     logging.error("⚠️ BOT_TOKEN не найден! Проверь Worker Variables на Railway.")
@@ -27,7 +24,7 @@ if not BOT_TOKEN:
 # ================== MEDIA ==================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
-VIDEO_URL = "https://youtu.be/uKKyn7wCKXE?si=Klz0s_l-jsvJCVTv"  # YouTube ссылка
+VIDEO_URL = "https://youtu.be/uKKyn7wCKXE?si=Klz0s_l-jsvJCVTv"
 
 def find_pdf():
     if not os.path.exists(MEDIA_DIR):
@@ -53,9 +50,7 @@ course_kb = InlineKeyboardMarkup(
 )
 
 subscription_kb = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="Оформить подписку", url="https://t.me/tribute/app?startapp=sK0H")]
-    ]
+    inline_keyboard=[[InlineKeyboardButton(text="Оформить подписку", url="https://t.me/tribute/app?startapp=sK0H")]]
 )
 
 fifth_message_kb = InlineKeyboardMarkup(
@@ -265,6 +260,12 @@ app = Flask(__name__)
 def home():
     return "Bot is running!"
 
+# ================== MAIN ==================
 if __name__ == "__main__":
-    Thread(target=lambda: asyncio.run(start_bot())).start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    def run_flask():
+        app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), use_reloader=False)
+
+    flask_process = multiprocessing.Process(target=run_flask)
+    flask_process.start()
+
+    asyncio.run(start_bot())
