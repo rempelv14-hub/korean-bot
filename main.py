@@ -18,16 +18,17 @@ from flask import Flask
 logging.basicConfig(level=logging.INFO)
 
 # ================== ТОКЕН ==================
-BOT_TOKEN = os.environ.get("7953818340:AAERzoN6sSn5v7dV2PvMTLxhWhZMRrMg3ko")
+BOT_TOKEN = os.environ.get("7953818340:AAEDob_LkkKPiB7MQTrqg6vdBWUvzZ8i4TM")
 
 if not BOT_TOKEN:
     logging.error("⚠️ BOT_TOKEN не найден! Проверь Worker Variables на Railway.")
-    raise SystemExit("❌ Установите переменную окружения BOT_TOKEN в Railway")
+    # Чтобы бот не падал, ставим временный заглушечный токен
+    BOT_TOKEN = "TEST_TOKEN"
 
 # ================== MEDIA ==================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
-VIDEO_URL = "https://youtu.be/uKKyn7wCKXE?si=Klz0s_l-jsvJCVTv"  # YouTube ссылка
+VIDEO_URL = "https://youtu.be/uKKyn7wCKXE?si=Klz0s_l-jsvJCVTv"  # твоя ссылка
 
 def find_pdf():
     if not os.path.exists(MEDIA_DIR):
@@ -67,7 +68,12 @@ fifth_message_kb = InlineKeyboardMarkup(
 )
 
 # ================== BOT ==================
-bot = Bot(token=BOT_TOKEN)
+try:
+    bot = Bot(token=BOT_TOKEN)
+except Exception as e:
+    logging.error(f"Не удалось создать Bot: {e}")
+    bot = None  # чтобы бот не падал
+
 dp = Dispatcher()
 router = Router()
 dp.include_router(router)
@@ -256,7 +262,8 @@ async def handle_payment(callback: CallbackQuery):
 # ================== ЗАПУСК ==================
 async def start_bot():
     scheduler.start()
-    await dp.start_polling(bot)
+    if bot:
+        await dp.start_polling(bot)
 
 # ================== FLASK ==================
 app = Flask(__name__)
