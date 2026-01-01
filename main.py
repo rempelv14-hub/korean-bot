@@ -7,6 +7,7 @@ from threading import Thread
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+from aiogram.utils.exceptions import TelegramError
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
@@ -18,17 +19,21 @@ from flask import Flask
 logging.basicConfig(level=logging.INFO)
 
 # ================== ТОКЕН ==================
-BOT_TOKEN = os.environ.get("")
-
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+bot = None
 if not BOT_TOKEN:
     logging.error("⚠️ BOT_TOKEN не найден! Проверь Worker Variables на Railway.")
-    # Чтобы бот не падал, ставим временный заглушечный токен
-    BOT_TOKEN = "TEST_TOKEN"
+else:
+    try:
+        bot = Bot(token=BOT_TOKEN)
+    except Exception as e:
+        logging.error(f"❌ Не удалось создать Bot: {e}")
+        bot = None
 
 # ================== MEDIA ==================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
-VIDEO_URL = "https://youtu.be/uKKyn7wCKXE?si=Klz0s_l-jsvJCVTv"  # твоя ссылка
+VIDEO_URL = "https://youtu.be/uKKyn7wCKXE?si=Klz0s_l-jsvJCVTv"
 
 def find_pdf():
     if not os.path.exists(MEDIA_DIR):
@@ -68,12 +73,6 @@ fifth_message_kb = InlineKeyboardMarkup(
 )
 
 # ================== BOT ==================
-try:
-    bot = Bot(token=BOT_TOKEN)
-except Exception as e:
-    logging.error(f"Не удалось создать Bot: {e}")
-    bot = None  # чтобы бот не падал
-
 dp = Dispatcher()
 router = Router()
 dp.include_router(router)
@@ -179,6 +178,9 @@ async def send_final_message(message: Message):
 
 # ================== ФУНКЦИЯ ЦЕПОЧКИ ==================
 def schedule_chain(user_id: int, message: Message):
+    if not bot:  # если бот не создан, ничего не делаем
+        return
+
     jobs = []
 
     async def send_if_not_paid(func, msg):
@@ -211,59 +213,62 @@ def schedule_chain(user_id: int, message: Message):
     active_users[user_id]["jobs"] = jobs
 
 # ================== ХЕНДЛЕРЫ ==================
-@router.message(CommandStart())
-async def start(message: Message):
-    user_id = message.from_user.id
-    if user_id not in active_users:
-        active_users[user_id] = {"paid": False, "jobs": []}
+if bot:  # подключаем хендлеры только если бот создан
+    @router.message(CommandStart())
+    async def start(message: Message):
+        user_id = message.from_user.id
+        if user_id not in active_users:
+            active_users[user_id] = {"paid": False, "jobs": []}
 
-    await message.answer(
-        "안녕하세요!\n"
-        "Рада приветствовать тебя! Я — твой персональный бот-помощник корейского\n"
-        "языка 🇰🇷\n"
-        "Система KOREAN MINIMAL - это новый практический курс о том, как:\n"
-        "• учить корейский системно, уделяя минимум времени;\n"
-        "• научиться быстро и правильно читать и писать;\n"
-        "• легко запоминать слова и грамматику;\n"
-        "• двигаться без хаоса и перегруза.\n"
-        "Готов(а) начать путь к корейскому, который действительно работает?",
-        reply_markup=start_kb
-    )
-
-@router.callback_query(F.data == "start_course")
-async def start_course(callback: CallbackQuery):
-    user_id = callback.from_user.id
-    await callback.answer()
-
-    if active_users[user_id]["jobs"]:
-        await callback.message.answer(
-            "Вы уже запустили курс! ⏳\n"
-            "Дождитесь следующих сообщений или оплатите тариф, чтобы продолжить."
+        await message.answer(
+            "안녕하세요!\n"
+            "Рада приветствовать тебя! Я — твой персональный бот-помощник корейского\n"
+            "языка 🇰🇷\n"
+            "Система KOREAN MINIMAL - это новый практический курс о том, как:\n"
+            "• учить корейский системно, уделяя минимум времени;\n"
+            "• научиться быстро и правильно читать и писать;\n"
+            "• легко запоминать слова и грамматику;\n"
+            "• двигаться без хаоса и перегруза.\n"
+            "Готов(а) начать путь к корейскому, который действительно работает?",
+            reply_markup=start_kb
         )
-        return
 
-    await send_video(callback.message)
-    schedule_chain(user_id, callback.message)
+    @router.callback_query(F.data == "start_course")
+    async def start_course(callback: CallbackQuery):
+        user_id = callback.from_user.id
+        await callback.answer()
 
-@router.callback_query(F.data.startswith("pay_"))
-async def handle_payment(callback: CallbackQuery):
-    user_id = callback.from_user.id
-    active_users[user_id]["paid"] = True
+        if active_users[user_id]["jobs"]:
+            await callback.message.answer(
+                "Вы уже запустили курс! ⏳\n"
+                "Дождитесь следующих сообщений или оплатите тариф, чтобы продолжить."
+            )
+            return
 
-    for job in active_users[user_id]["jobs"]:
-        job.remove()
-    active_users[user_id]["jobs"] = []
+        await send_video(callback.message)
+        schedule_chain(user_id, callback.message)
 
-    await callback.message.answer(
-        f"Вы выбрали тариф ✅\n"
-        f"Пожалуйста, отправьте чек оплаты в Telegram: https://t.me/minimalkor"
-    )
+    @router.callback_query(F.data.startswith("pay_"))
+    async def handle_payment(callback: CallbackQuery):
+        user_id = callback.from_user.id
+        active_users[user_id]["paid"] = True
+
+        for job in active_users[user_id]["jobs"]:
+            job.remove()
+        active_users[user_id]["jobs"] = []
+
+        await callback.message.answer(
+            f"Вы выбрали тариф ✅\n"
+            f"Пожалуйста, отправьте чек оплаты в Telegram: https://t.me/minimalkor"
+        )
 
 # ================== ЗАПУСК ==================
 async def start_bot():
     scheduler.start()
     if bot:
         await dp.start_polling(bot)
+    else:
+        logging.warning("Бот не создан — пропускаем polling.")
 
 # ================== FLASK ==================
 app = Flask(__name__)
@@ -275,4 +280,3 @@ def home():
 if __name__ == "__main__":
     Thread(target=lambda: asyncio.run(start_bot())).start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-
