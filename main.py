@@ -18,15 +18,16 @@ from flask import Flask
 logging.basicConfig(level=logging.INFO)
 
 # ================== ТОКЕН ==================
-# Исправлено: читаем токен из переменной окружения BOT_TOKEN
 BOT_TOKEN = os.environ.get("7953818340:AAGe2Fr13_BKsa8U-68PWt33N9SdfBYvrzE")
 if not BOT_TOKEN:
-    raise ValueError("Переменная окружения BOT_TOKEN не найдена! Проверь Environment Variables в Railway.")
+    logging.error("⚠️ Переменная окружения BOT_TOKEN не найдена! Проверь Worker Variables на Railway.")
+    BOT_TOKEN = "TEST_TOKEN"  # временно, чтобы бот не падал
+else:
+    logging.info("✅ BOT_TOKEN найден, можно стартовать бота")
 
 # ================== MEDIA ==================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
-VIDEO_URL = "https://youtu.be/uKKyn7wCKXE?si=Klz0s_l-jsvJCVTv"
 
 def find_pdf():
     if not os.path.exists(MEDIA_DIR):
@@ -84,7 +85,7 @@ async def send_video(message: Message):
             "Отлично! Начнём с подарка 🎁\n"
             "Я подготовила видео о том, как правильно планировать изучение корейского,\n"
             "чтобы не бросить через неделю и не тратить время впустую.\n\n"
-            f"👉 Смотри видео: {VIDEO_URL}\n"
+            "👉 Смотри видео: https://youtu.be/uKKyn7wCKXE?si=Klz0s_l-jsvJCVTv\n"
             "После просмотра тебя ждёт ещё один бонус ✨\n(я пришлю его чуть позже)"
         )
     except Exception as e:
