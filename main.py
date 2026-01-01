@@ -2,12 +2,10 @@ import asyncio
 import os
 import logging
 from datetime import datetime, timedelta
-from threading import Thread
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
-from aiogram.exceptions import TelegramAPIError  # для базовой обработки ошибок
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
@@ -19,8 +17,7 @@ from flask import Flask
 logging.basicConfig(level=logging.INFO)
 
 # ================== ТОКЕН ==================
-BOT_TOKEN = os.environ.get("BOT_TOKEN")  # исправлено: используем переменную BOT_TOKEN
-
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     logging.error("⚠️ BOT_TOKEN не найден! Проверь Worker Variables на Railway.")
     raise SystemExit("❌ Установите переменную окружения BOT_TOKEN в Railway")
@@ -75,6 +72,7 @@ dp.include_router(router)
 
 # ================== SCHEDULER ==================
 scheduler = AsyncIOScheduler(timezone=get_localzone())
+scheduler.start()
 
 # ================== ГЛОБАЛЬНЫЕ ДАННЫЕ ==================
 active_users = {}  # user_id -> {"paid": bool, "jobs": [scheduler_job]}
@@ -89,7 +87,7 @@ async def send_video(message: Message):
             f"👉 Смотри видео: {VIDEO_URL}\n"
             "После просмотра тебя ждёт ещё один бонус ✨\n(я пришлю его чуть позже)"
         )
-    except TelegramAPIError as e:
+    except Exception as e:
         logging.error(f"Ошибка при отправке видео: {e}")
 
 async def send_pdf(message: Message):
@@ -103,7 +101,7 @@ async def send_pdf(message: Message):
             await message.answer_document(FSInputFile(PDF_PATH))
         else:
             await message.answer("⚠️ PDF не найден")
-    except TelegramAPIError as e:
+    except Exception as e:
         logging.error(f"Ошибка при отправке PDF: {e}")
 
 async def send_course_presentation(message: Message):
@@ -140,7 +138,7 @@ async def send_course_presentation(message: Message):
             "Цена: 24990 тенге / 3990 ₽"
         )
         await message.answer(text, reply_markup=course_kb)
-    except TelegramAPIError as e:
+    except Exception as e:
         logging.error(f"Ошибка при отправке презентации курса: {e}")
 
 async def send_useful_tips(message: Message):
@@ -154,7 +152,7 @@ async def send_useful_tips(message: Message):
             "Идеальное комбо = Правильное произношение + словарный запас",
             reply_markup=fifth_message_kb
         )
-    except TelegramAPIError as e:
+    except Exception as e:
         logging.error(f"Ошибка при отправке полезных советов: {e}")
 
 async def send_final_message(message: Message):
@@ -169,11 +167,14 @@ async def send_final_message(message: Message):
             "Цена: 12990 тенге / 1990 ₽"
         )
         await message.answer(text, reply_markup=subscription_kb)
-    except TelegramAPIError as e:
+    except Exception as e:
         logging.error(f"Ошибка при отправке финального сообщения: {e}")
 
 # ================== ФУНКЦИЯ ЦЕПОЧКИ ==================
 def schedule_chain(user_id: int, message: Message):
+    if user_id not in active_users:
+        active_users[user_id] = {"paid": False, "jobs": []}
+
     jobs = []
 
     async def send_if_not_paid(func, msg):
@@ -183,7 +184,7 @@ def schedule_chain(user_id: int, message: Message):
         if not active_users[user_id]["paid"]:
             try:
                 await func(msg)
-            except TelegramAPIError as e:
+            except Exception as e:
                 logging.error(f"Ошибка при отправке сообщения пользователю {msg.from_user.id}: {e}")
         else:
             for job in active_users[user_id]["jobs"]:
@@ -192,11 +193,13 @@ def schedule_chain(user_id: int, message: Message):
 
     now = datetime.now(get_localzone())
 
+    # Тайминги сообщений (в порядке отправки)
     message_chain = [
-        (send_pdf, timedelta(minutes=5)),
-        (send_course_presentation, timedelta(minutes=10)),
-        (send_useful_tips, timedelta(hours=3)),
-        (send_final_message, timedelta(days=3)),
+        (send_video, timedelta(seconds=5)),       # 1-е сообщение
+        (send_pdf, timedelta(seconds=10)),        # 2-е сообщение
+        (send_course_presentation, timedelta(seconds=15)),  # 3-е сообщение
+        (send_useful_tips, timedelta(seconds=20)),          # 4-е сообщение
+        (send_final_message, timedelta(seconds=25)),        # 5-е сообщение
     ]
 
     for func, delta in message_chain:
@@ -209,7 +212,8 @@ def schedule_chain(user_id: int, message: Message):
 @router.message(CommandStart())
 async def start(message: Message):
     user_id = message.from_user.id
-    active_users.setdefault(user_id, {"paid": False, "jobs": []})  # всегда есть запись
+    if user_id not in active_users:
+        active_users[user_id] = {"paid": False, "jobs": []}
 
     await message.answer(
         "안녕하세요!\n"
@@ -227,11 +231,14 @@ async def start(message: Message):
 @router.callback_query(F.data == "start_course")
 async def start_course(callback: CallbackQuery):
     user_id = callback.from_user.id
+
+    # Проверка на существование пользователя
+    if user_id not in active_users:
+        active_users[user_id] = {"paid": False, "jobs": []}
+
     await callback.answer()
 
-    user_data = active_users.setdefault(user_id, {"paid": False, "jobs": []})
-
-    if user_data["jobs"]:
+    if active_users[user_id]["jobs"]:
         await callback.message.answer(
             "Вы уже запустили курс! ⏳\n"
             "Дождитесь следующих сообщений или оплатите тариф, чтобы продолжить."
@@ -244,13 +251,14 @@ async def start_course(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("pay_"))
 async def handle_payment(callback: CallbackQuery):
     user_id = callback.from_user.id
-    user_data = active_users.setdefault(user_id, {"paid": False, "jobs": []})
+    if user_id not in active_users:
+        active_users[user_id] = {"paid": False, "jobs": []}
 
-    user_data["paid"] = True
+    active_users[user_id]["paid"] = True
 
-    for job in user_data["jobs"]:
+    for job in active_users[user_id]["jobs"]:
         job.remove()
-    user_data["jobs"] = []
+    active_users[user_id]["jobs"] = []
 
     await callback.message.answer(
         f"Вы выбрали тариф ✅\n"
@@ -259,7 +267,7 @@ async def handle_payment(callback: CallbackQuery):
 
 # ================== ЗАПУСК ==================
 async def start_bot():
-    scheduler.start()
+    logging.info("Бот запущен")
     await dp.start_polling(bot)
 
 # ================== FLASK ==================
@@ -270,7 +278,5 @@ def home():
     return "Bot is running!"
 
 if __name__ == "__main__":
-    # запуск бота и Flask одновременно безопасно
-    loop = asyncio.get_event_loop()
-    loop.create_task(start_bot())
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    # Запускаем бота в основном asyncio loop
+    asyncio.run(start_bot())
