@@ -193,17 +193,18 @@ def schedule_chain(user_id: int, message: Message):
 
     now = datetime.now(get_localzone())
 
-    # Тайминги сообщений (в порядке отправки)
     message_chain = [
-        (send_video, timedelta(seconds=5)),       # 1-е сообщение
-        (send_pdf, timedelta(seconds=10)),        # 2-е сообщение
-        (send_course_presentation, timedelta(seconds=15)),  # 3-е сообщение
-        (send_useful_tips, timedelta(seconds=20)),          # 4-е сообщение
-        (send_final_message, timedelta(seconds=25)),        # 5-е сообщение
+        (send_video, timedelta(seconds=5)),
+        (send_pdf, timedelta(seconds=10)),
+        (send_course_presentation, timedelta(seconds=15)),
+        (send_useful_tips, timedelta(seconds=20)),
+        (send_final_message, timedelta(seconds=25)),
     ]
 
     for func, delta in message_chain:
-        job = scheduler.add_job(send_if_not_paid, DateTrigger(now + delta), args=[func, message])
+        def job_wrapper(f=func):
+            asyncio.create_task(send_if_not_paid(f, message))
+        job = scheduler.add_job(job_wrapper, DateTrigger(now + delta))
         jobs.append(job)
 
     active_users[user_id]["jobs"] = jobs
@@ -231,8 +232,6 @@ async def start(message: Message):
 @router.callback_query(F.data == "start_course")
 async def start_course(callback: CallbackQuery):
     user_id = callback.from_user.id
-
-    # Проверка на существование пользователя
     if user_id not in active_users:
         active_users[user_id] = {"paid": False, "jobs": []}
 
@@ -278,5 +277,4 @@ def home():
     return "Bot is running!"
 
 if __name__ == "__main__":
-    # Запускаем бота в основном asyncio loop
     asyncio.run(start_bot())
