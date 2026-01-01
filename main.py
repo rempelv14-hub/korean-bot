@@ -1,16 +1,10 @@
 import asyncio
 import os
 import logging
-from datetime import datetime, timedelta
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
-
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.date import DateTrigger
-from tzlocal import get_localzone
-
 from flask import Flask
 
 # ================== ЛОГИРОВАНИЕ ==================
@@ -70,12 +64,8 @@ dp = Dispatcher()
 router = Router()
 dp.include_router(router)
 
-# ================== SCHEDULER ==================
-scheduler = AsyncIOScheduler(timezone=get_localzone())
-scheduler.start()
-
 # ================== ГЛОБАЛЬНЫЕ ДАННЫЕ ==================
-active_users = {}  # user_id -> {"paid": bool, "jobs": []}
+active_users = {}  # user_id -> {"paid": bool, "tasks": [asyncio.Task]}
 
 # ================== СООБЩЕНИЯ ==================
 async def send_video(message: Message):
@@ -160,53 +150,40 @@ async def send_final_message(message: Message):
     )
     logging.info(f"[{message.from_user.id}] Отправлено финальное сообщение")
 
-# ================== ФУНКЦИЯ ЦЕПОЧКИ ==================
-def schedule_chain(user_id: int, message: Message):
+# ================== ЦЕПОЧКА ЧЕРЕЗ ASYNCIO ==================
+def start_message_chain(user_id: int, message: Message):
     if user_id not in active_users:
-        active_users[user_id] = {"paid": False, "jobs": []}
+        active_users[user_id] = {"paid": False, "tasks": []}
 
-    jobs = []
-
-    async def job_wrapper(func, msg):
-        # Проверяем пользователя
-        if user_id not in active_users:
-            active_users[user_id] = {"paid": False, "jobs": []}
-
-        if active_users[user_id]["paid"]:
-            # Пользователь оплатил — удаляем все jobs
-            for job in active_users[user_id]["jobs"]:
-                job.remove()
-            active_users[user_id]["jobs"] = []
-            logging.info(f"[{user_id}] Пользователь оплатил — прерываем цепочку")
-            return
-
+    async def chain():
         try:
-            await func(msg)
-        except Exception as e:
-            logging.error(f"[{user_id}] Ошибка при отправке сообщения: {e}")
+            await asyncio.sleep(5)
+            if not active_users[user_id]["paid"]:
+                await send_pdf(message)
+            await asyncio.sleep(5)
+            if not active_users[user_id]["paid"]:
+                await send_course_presentation(message)
+            await asyncio.sleep(5)
+            if not active_users[user_id]["paid"]:
+                await send_useful_tips(message)
+            await asyncio.sleep(5)
+            if not active_users[user_id]["paid"]:
+                await send_final_message(message)
+        except asyncio.CancelledError:
+            logging.info(f"[{user_id}] Цепочка сообщений отменена")
+        finally:
+            active_users[user_id]["tasks"] = []
 
-    now = datetime.now(get_localzone())
-
-    message_chain = [
-        (send_pdf, timedelta(seconds=5)),                  # 2-е сообщение
-        (send_course_presentation, timedelta(seconds=10)), # 3-е сообщение
-        (send_useful_tips, timedelta(seconds=15)),         # 4-е сообщение
-        (send_final_message, timedelta(seconds=20)),       # 5-е сообщение
-    ]
-
-    for func, delta in message_chain:
-        job = scheduler.add_job(job_wrapper, DateTrigger(now + delta), args=[func, message])
-        jobs.append(job)
-
-    active_users[user_id]["jobs"] = jobs
-    logging.info(f"[{user_id}] Запущена цепочка сообщений")
+    task = asyncio.create_task(chain())
+    active_users[user_id]["tasks"].append(task)
+    logging.info(f"[{user_id}] Запущена цепочка сообщений через asyncio")
 
 # ================== ХЕНДЛЕРЫ ==================
 @router.message(CommandStart())
 async def start(message: Message):
     user_id = message.from_user.id
     if user_id not in active_users:
-        active_users[user_id] = {"paid": False, "jobs": []}
+        active_users[user_id] = {"paid": False, "tasks": []}
 
     await message.answer(
         "안녕하세요!\n"
@@ -225,11 +202,11 @@ async def start(message: Message):
 async def start_course(callback: CallbackQuery):
     user_id = callback.from_user.id
     if user_id not in active_users:
-        active_users[user_id] = {"paid": False, "jobs": []}
+        active_users[user_id] = {"paid": False, "tasks": []}
 
     await callback.answer()
 
-    if active_users[user_id]["jobs"]:
+    if active_users[user_id]["tasks"]:
         await callback.message.answer(
             "Вы уже запустили курс! ⏳\n"
             "Дождитесь следующих сообщений или оплатите тариф, чтобы продолжить."
@@ -237,19 +214,20 @@ async def start_course(callback: CallbackQuery):
         return
 
     await send_video(callback.message)  # 1-е сообщение сразу
-    schedule_chain(user_id, callback.message)
+    start_message_chain(user_id, callback.message)
 
 @router.callback_query(F.data.startswith("pay_"))
 async def handle_payment(callback: CallbackQuery):
     user_id = callback.from_user.id
     if user_id not in active_users:
-        active_users[user_id] = {"paid": False, "jobs": []}
+        active_users[user_id] = {"paid": False, "tasks": []}
 
     active_users[user_id]["paid"] = True
 
-    for job in active_users[user_id]["jobs"]:
-        job.remove()
-    active_users[user_id]["jobs"] = []
+    # Отменяем все задачи
+    for task in active_users[user_id]["tasks"]:
+        task.cancel()
+    active_users[user_id]["tasks"] = []
 
     await callback.message.answer(
         f"Вы выбрали тариф ✅\n"
