@@ -15,7 +15,7 @@ import multiprocessing
 logging.basicConfig(level=logging.INFO)
 
 # ================== ТОКЕН ==================
-BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Токен берется только из переменных окружения
+BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Только из переменных окружения
 
 if not BOT_TOKEN:
     logging.error("⚠️ BOT_TOKEN не найден! Проверь Worker Variables на Railway.")
@@ -248,11 +248,6 @@ async def handle_payment(callback: CallbackQuery):
         f"Пожалуйста, отправьте чек оплаты в Telegram: https://t.me/minimalkor"
     )
 
-# ================== ЗАПУСК ==================
-async def start_bot():
-    scheduler.start()
-    await dp.start_polling(bot)
-
 # ================== FLASK ==================
 app = Flask(__name__)
 
@@ -262,10 +257,13 @@ def home():
 
 # ================== MAIN ==================
 if __name__ == "__main__":
+    # Flask в отдельном процессе
     def run_flask():
         app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), use_reloader=False)
 
     flask_process = multiprocessing.Process(target=run_flask)
     flask_process.start()
 
-    asyncio.run(start_bot())
+    # Aiogram запускается в главном процессе
+    scheduler.start()
+    asyncio.run(dp.start_polling(bot))
