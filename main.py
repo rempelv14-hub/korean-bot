@@ -163,34 +163,38 @@ async def send_final_message(message: Message):
     except Exception as e:
         logging.error(f"Ошибка при отправке финального сообщения: {e}")
 
-# ================== ЦЕПОЧКА С РЕАЛЬНЫМИ ТАЙМИНГАМИ ==================
+# ================== ЦЕПОЧКА С НОВЫМИ ТАЙМИНГАМИ ==================
 def start_message_chain(user_id: int, message: Message):
     if user_id not in active_users:
         active_users[user_id] = {"paid": False, "tasks": []}
 
     async def chain():
         try:
-            # 1 и 2 сообщения сразу
+            # 1 — Видео сразу
             if not active_users[user_id]["paid"]:
                 await send_video(message)
+
+            # 2 — PDF через 5 минут
+            await asyncio.sleep(5 * 60)
+            if not active_users[user_id]["paid"]:
                 await send_pdf(message)
 
-            # 3 сообщение через 5 минут
+            # 3 — Презентация курса через 10 минут после старта (т.е. 5 минут после PDF)
             await asyncio.sleep(5 * 60)
             if not active_users[user_id]["paid"]:
                 await send_course_presentation(message)
 
-            # 4 сообщение через 5 минут после 3-го
+            # 4 — Полезные советы через 15 минут после старта (т.е. 5 минут после 3-го)
             await asyncio.sleep(5 * 60)
             if not active_users[user_id]["paid"]:
                 await send_useful_tips(message)
 
-            # 5 сообщение через 3 часа
+            # 5 — Финальное сообщение через 3 часа после старта
             await asyncio.sleep(3 * 60 * 60)
             if not active_users[user_id]["paid"]:
                 await send_final_message(message)
 
-            # 6 сообщение через 5 дней
+            # 6 — Подписка / напоминание через 5 дней после старта
             await asyncio.sleep(5 * 24 * 60 * 60)
             if not active_users[user_id]["paid"]:
                 await message.answer(
@@ -205,7 +209,7 @@ def start_message_chain(user_id: int, message: Message):
 
     task = asyncio.create_task(chain())
     active_users[user_id]["tasks"].append(task)
-    logging.info(f"[{user_id}] Запущена цепочка сообщений с реальными таймингами")
+    logging.info(f"[{user_id}] Запущена цепочка сообщений с новыми таймингами")
 
 # ================== ХЕНДЛЕРЫ ==================
 @router.message(CommandStart())
