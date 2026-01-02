@@ -1,4 +1,3 @@
-import asyncio
 import os
 import logging
 from datetime import datetime, timedelta
@@ -6,9 +5,8 @@ from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
-
-from tzlocal import get_localzone
 from flask import Flask
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # ================== ЛОГИРОВАНИЕ ==================
 logging.basicConfig(level=logging.INFO)
@@ -40,23 +38,24 @@ start_kb = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="🚀 Старт", callback_data="start_course")]]
 )
 
-# 4-е сообщение - 3 кнопки
-fourth_message_kb = InlineKeyboardMarkup(
+# 4-е сообщение — 3 кнопки
+fourth_kb = InlineKeyboardMarkup(
     inline_keyboard=[
-        [InlineKeyboardButton(text="Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
+        [InlineKeyboardButton(text="Оформить тариф «стандарт»", url="https://web.tribute.tg/s/K0H")],
         [InlineKeyboardButton(text="Оформить тариф «VIP»", url="https://t.me/minimalkor")],
         [InlineKeyboardButton(text="Подписаться на канал", url="https://t.me/minimalkorean")]
     ]
 )
 
-# 5-е сообщение - 2 кнопки
-fifth_message_kb = InlineKeyboardMarkup(
+# 5-е сообщение — 2 кнопки
+fifth_kb = InlineKeyboardMarkup(
     inline_keyboard=[
-        [InlineKeyboardButton(text="Оплатить «Стандарт»", url="https://web.tribute.tg/s/K0H")],
-        [InlineKeyboardButton(text="Оплатить «VIP»", url="https://t.me/minimalkor")]
+        [InlineKeyboardButton(text="Оплатить тариф «стандарт»", url="https://web.tribute.tg/s/K0H")],
+        [InlineKeyboardButton(text="Оплатить тариф «VIP»", url="https://t.me/minimalkor")]
     ]
 )
 
+# 6-е сообщение — подписка
 subscription_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оформить подписку", url="https://t.me/tribute/app?startapp=sK0H")]
@@ -70,36 +69,40 @@ router = Router()
 dp.include_router(router)
 
 # ================== ГЛОБАЛЬНЫЕ ДАННЫЕ ==================
-active_users = {}  # user_id -> {"paid": bool, "tasks": [asyncio_task]}
+active_users = {}  # user_id -> {"paid": bool}
+scheduler = BackgroundScheduler()
+scheduler.start()
 
 # ================== СООБЩЕНИЯ ==================
-async def send_video(message: Message):
+async def send_video(user_id: int):
     try:
-        await message.answer(
+        await bot.send_message(
+            user_id,
             "Отлично! Начнём с подарка 🎁\n"
             "Я подготовила видео о том, как правильно планировать изучение корейского,\n"
             "чтобы не бросить через неделю и не тратить время впустую.\n\n"
             f"👉 Смотри видео: {VIDEO_URL}\n"
             "После просмотра тебя ждёт ещё один бонус ✨\n(я пришлю его чуть позже)"
         )
+        logging.info(f"[{user_id}] Отправлено 1-е сообщение (видео)")
     except Exception as e:
         logging.error(f"Ошибка при отправке видео: {e}")
 
-async def send_pdf(message: Message):
+async def send_pdf(user_id: int):
     try:
-        await message.answer(
+        await bot.send_message(
+            user_id,
             "Как и обещала — вот твой бонус 📘✨\n"
             "Дарю календарь для изучения корейского.\n"
             "Он поможет дойти до 4го уровня системно и без срывов."
         )
         if PDF_PATH and os.path.exists(PDF_PATH):
-            await message.answer_document(FSInputFile(PDF_PATH))
-        else:
-            await message.answer("⚠️ PDF не найден")
+            await bot.send_document(user_id, FSInputFile(PDF_PATH))
+        logging.info(f"[{user_id}] Отправлено 2-е сообщение (PDF)")
     except Exception as e:
         logging.error(f"Ошибка при отправке PDF: {e}")
 
-async def send_course_presentation(message: Message):
+async def send_course_presentation(user_id: int):
     try:
         text = (
             "А все что в календаре, что ждёт тебя на курсе Система KOREAN MINIMAL 👇\n"
@@ -132,76 +135,77 @@ async def send_course_presentation(message: Message):
             "Количество мест: 5\n"
             "Цена: 24990 тенге / 3990 ₽"
         )
-        await message.answer(text)
+        await bot.send_message(user_id, text)
+        logging.info(f"[{user_id}] Отправлено 3-е сообщение (презентация)")
     except Exception as e:
-        logging.error(f"Ошибка при отправке презентации курса: {e}")
+        logging.error(f"Ошибка при отправке презентации: {e}")
 
-async def send_useful_tips(message: Message):
+async def send_useful_tips(user_id: int):
     try:
-        await message.answer(
+        await bot.send_message(user_id,
             "Начнём сразу с самого полезного 🔥\n"
             "📅 Старт основной программы — 15 января.\n"
             "И уже 15го запускается марафон по пополнению словарного запаса.\n"
             "Мы не просто учим слова - мы учимся использовать их в речи.\n"
             "Также начнем с козырей - правильного произношения😎 "
             "Идеальное комбо = Правильное произношение + словарный запас",
-            reply_markup=fourth_message_kb
+            reply_markup=fourth_kb
         )
+        logging.info(f"[{user_id}] Отправлено 4-е сообщение (полезные советы)")
     except Exception as e:
-        logging.error(f"Ошибка при отправке полезных советов: {e}")
+        logging.error(f"Ошибка при отправке 4-го сообщения: {e}")
 
-async def send_final_message(message: Message):
+async def send_final_message(user_id: int):
     try:
-        text = (
+        await bot.send_message(user_id,
             "Еще один шаг и ты студент KOREAN MINIMAL\n"
             "За 2 месяца обучения получишь все мои методы изучения корейского за 10 лет изучения корейского. "
             "Благодаря которому сейчас владею 6 уровнем ТOPIK, работала переводчиком в нефтяной компании.\n\n"
             "Главный результат:\n"
             "Полюбить логичный корейский язык\n"
-            "Пройти 1 уровень и увидеть результат\n"
-            "Цена: 12990 тенге / 1990 ₽"
+            "Пройти 1 уровень и увидеть результат\n",
+            reply_markup=fifth_kb
         )
-        await message.answer(text, reply_markup=fifth_message_kb)
+        logging.info(f"[{user_id}] Отправлено 5-е сообщение (финальное с 2 кнопками)")
     except Exception as e:
-        logging.error(f"Ошибка при отправке финального сообщения: {e}")
+        logging.error(f"Ошибка при отправке 5-го сообщения: {e}")
 
-# ================== ЦЕПОЧКА С ОТДЕЛЬНЫМИ ЗАДАЧАМИ ==================
-def start_message_chain(user_id: int, message: Message):
-    if user_id not in active_users:
-        active_users[user_id] = {"paid": False, "tasks": []}
+async def send_subscription_reminder(user_id: int):
+    try:
+        await bot.send_message(user_id,
+            "Напоминание: ещё есть бонусы и возможности подписки! 🚀",
+            reply_markup=subscription_kb
+        )
+        logging.info(f"[{user_id}] Отправлено 6-е сообщение (подписка)")
+    except Exception as e:
+        logging.error(f"Ошибка при отправке 6-го сообщения: {e}")
 
-    async def send_with_delay(func, delay_seconds, message):
-        await asyncio.sleep(delay_seconds)
-        if not active_users[user_id]["paid"]:
-            try:
-                await func(message)
-                logging.info(f"[{user_id}] Отправлено сообщение {func.__name__}")
-            except Exception as e:
-                logging.error(f"[{user_id}] Ошибка при отправке {func.__name__}: {e}")
+# ================== ЦЕПОЧКА С APSCHEDULER ==================
+def start_message_chain(user_id: int):
+    now = datetime.now()
+    # 1 — видео сразу
+    scheduler.add_job(lambda: asyncio.create_task(send_video(user_id)), next_run_time=now)
 
-    tasks = [
-        asyncio.create_task(send_with_delay(send_video, 0, message)),           # сразу
-        asyncio.create_task(send_with_delay(send_pdf, 5*60, message)),          # через 5 мин
-        asyncio.create_task(send_with_delay(send_course_presentation, 10*60, message)),  # через 10 мин
-        asyncio.create_task(send_with_delay(send_useful_tips, 15*60, message)),         # через 15 мин
-        asyncio.create_task(send_with_delay(send_final_message, 3*60*60, message)),     # через 3 часа
-        asyncio.create_task(send_with_delay(
-            lambda m: m.answer("Напоминание: ещё есть бонусы и возможности подписки! 🚀", reply_markup=subscription_kb),
-            3*24*60*60,
-            message
-        )),  # через 3 дня
-    ]
+    # 2 — PDF через 5 минут
+    scheduler.add_job(lambda: asyncio.create_task(send_pdf(user_id)), next_run_time=now + timedelta(minutes=5))
 
-    active_users[user_id]["tasks"] = tasks
-    logging.info(f"[{user_id}] Запущена цепочка сообщений")
+    # 3 — Презентация через 10 минут
+    scheduler.add_job(lambda: asyncio.create_task(send_course_presentation(user_id)), next_run_time=now + timedelta(minutes=10))
+
+    # 4 — Полезные советы через 15 минут
+    scheduler.add_job(lambda: asyncio.create_task(send_useful_tips(user_id)), next_run_time=now + timedelta(minutes=15))
+
+    # 5 — Финальное сообщение через 3 часа
+    scheduler.add_job(lambda: asyncio.create_task(send_final_message(user_id)), next_run_time=now + timedelta(hours=3))
+
+    # 6 — Подписка через 3 дня
+    scheduler.add_job(lambda: asyncio.create_task(send_subscription_reminder(user_id)), next_run_time=now + timedelta(days=3))
 
 # ================== ХЕНДЛЕРЫ ==================
 @router.message(CommandStart())
 async def start(message: Message):
     user_id = message.from_user.id
-    if user_id not in active_users:
-        active_users[user_id] = {"paid": False, "tasks": []}
-
+    start_message_chain(user_id)
     await message.answer(
         "안녕하세요!\n"
         "Рада приветствовать тебя! Я — твой персональный бот-помощник корейского\n"
@@ -215,20 +219,6 @@ async def start(message: Message):
         reply_markup=start_kb
     )
 
-@router.callback_query(F.data == "start_course")
-async def start_course(callback: CallbackQuery):
-    user_id = callback.from_user.id
-    if user_id not in active_users:
-        active_users[user_id] = {"paid": False, "tasks": []}
-
-    await callback.answer()
-    start_message_chain(user_id, callback.message)
-
-# ================== ЗАПУСК ==================
-async def start_bot():
-    logging.info("Бот запущен")
-    await dp.start_polling(bot)
-
 # ================== FLASK ==================
 app = Flask(__name__)
 
@@ -236,5 +226,11 @@ app = Flask(__name__)
 def home():
     return "Bot is running!"
 
+# ================== ЗАПУСК ==================
 if __name__ == "__main__":
-    asyncio.run(start_bot())
+    import asyncio
+    import nest_asyncio
+    nest_asyncio.apply()
+    from aiogram import executor
+    logging.info("Бот запущен")
+    executor.start_polling(dp)
