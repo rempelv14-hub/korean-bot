@@ -1,7 +1,6 @@
 import asyncio
 import os
 import logging
-
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
@@ -13,7 +12,8 @@ logging.basicConfig(level=logging.INFO)
 # ================== ТОКЕН ==================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise SystemExit("❌ Установите переменную окружения BOT_TOKEN")
+    logging.error("⚠️ BOT_TOKEN не найден! Проверь Worker Variables на Railway.")
+    raise SystemExit("❌ Установите переменную окружения BOT_TOKEN в Railway")
 
 # ================== MEDIA ==================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,37 +23,41 @@ VIDEO_URL = "https://youtu.be/uKKyn7wCKXE?si=Klz0s_l-jsvJCVTv"
 def find_pdf():
     if not os.path.exists(MEDIA_DIR):
         return None
-    for f in os.listdir(MEDIA_DIR):
-        if f.lower().endswith(".pdf"):
-            return os.path.join(MEDIA_DIR, f)
+    for file in os.listdir(MEDIA_DIR):
+        if file.lower().endswith(".pdf"):
+            return os.path.join(MEDIA_DIR, file)
     return None
 
 PDF_PATH = find_pdf()
 logging.info(f"PDF найден: {PDF_PATH}")
 
 # ================== КНОПКИ ==================
+
 start_kb = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="🚀 Старт", callback_data="start_course")]]
 )
 
-course_kb = InlineKeyboardMarkup(
+# 4-е сообщение
+fourth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
-        [InlineKeyboardButton(text="Оформить тариф «Стандарт»", url="https://t.me/tribute/app?startapp=sK0H")],
-        [InlineKeyboardButton(text="Оформить тариф «VIP»", url="https://t.me/tribute/app?startapp=sK0H")]
+        [InlineKeyboardButton(text="Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
+        [InlineKeyboardButton(text="Оформить тариф «VIP»", url="https://t.me/minimalkor")],
+        [InlineKeyboardButton(text="Подписаться на канал", url="https://t.me/minimalkorean")]
     ]
 )
 
-subscription_kb = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="Оформить подписку", url="https://t.me/tribute/app?startapp=sK0H")]
-    ]
-)
-
+# 5-е сообщение
 fifth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
-        [InlineKeyboardButton(text="Оплатить «Стандарт»", url="https://web.tribute.tg/s/K0H")],
-        [InlineKeyboardButton(text="Оплатить «VIP»", url="https://t.me/minimalkor")],
-        [InlineKeyboardButton(text="Подписаться на канал", url="https://t.me/minimalkorean")]
+        [InlineKeyboardButton(text="Оплатить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
+        [InlineKeyboardButton(text="Оплатить тариф «VIP»", url="https://t.me/minimalkor")]
+    ]
+)
+
+# 6-е сообщение
+subscription_kb = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="Оформить подписку", url="https://web.tribute.tg/s/K0H")]
     ]
 )
 
@@ -63,7 +67,8 @@ dp = Dispatcher()
 router = Router()
 dp.include_router(router)
 
-active_users = {}
+# ================== ГЛОБАЛЬНЫЕ ДАННЫЕ ==================
+active_users = {}  # user_id -> {"paid": bool, "tasks": [asyncio_task]}
 
 # ================== СООБЩЕНИЯ ==================
 async def send_video(message: Message):
@@ -81,11 +86,13 @@ async def send_pdf(message: Message):
         "Дарю календарь для изучения корейского.\n"
         "Он поможет дойти до 4го уровня системно и без срывов."
     )
-    if PDF_PATH:
+    if PDF_PATH and os.path.exists(PDF_PATH):
         await message.answer_document(FSInputFile(PDF_PATH))
+    else:
+        await message.answer("⚠️ PDF не найден")
 
 async def send_course_presentation(message: Message):
-    await message.answer(
+    text = (
         "А все что в календаре, что ждёт тебя на курсе Система KOREAN MINIMAL 👇\n"
         "На курсе за месяц ты:\n"
         "• научишься быстро и правильно читать;\n"
@@ -93,16 +100,30 @@ async def send_course_presentation(message: Message):
         "• создашь личный план изучения корейского, который реально работает;\n"
         "• начнёшь говорить на корейском уже в процессе обучения.\n\n"
         "Курс состоит из 4 модулей:\n"
-        "🔹 Модуль 1 — Чтение\n"
-        "🔹 Модуль 2 — Словарный запас (300 слов)\n"
-        "🔹 Модуль 3 — Говорить без страха\n"
-        "🔹 Модуль 4 — Скорочтение\n\n"
+        "🔹 Модуль 1 — Чтение\nОсвоение ассимиляции и произношения.\n"
+        "🔹 Модуль 2 — Словарный запас (300 слов)\nМетоды, практика, использование в диалогах.\n"
+        "🔹 Модуль 3 — Говорить без страха\nПостроение фраз, уверенная речь.\n"
+        "🔹 Модуль 4 — Скорочтение\nБыстрое понимание текста и развитие скорости чтения.\n\n"
         "Тариф “стандарт” включает:\n"
-        "Цена: 12990 тенге / 1990 ₽\n\n"
+        "📌 Большие выпуски о методах и правильном чтении\n"
+        "📌 16 уроков по словарному запасу\n"
+        "📌 8 уроков грамматики\n"
+        "📌 Видео-разборы корейских песен\n"
+        "📌 Марафон по словам и разговорной практике\n"
+        "📌 Обратная связь от ментора\n"
+        "Цена: 12990 тенге / 1990 ₽ в месяц\n\n"
         "Тариф “VIP” включает:\n"
-        "Цена: 24990 тенге / 3990 ₽",
-        reply_markup=course_kb
+        "📌 Большие выпуски о методах и правильном чтении\n"
+        "📌 16 уроков по словарному запасу\n"
+        "📌 8 уроков грамматики\n"
+        "📌 Видео-разборы корейских песен\n"
+        "📌 Марафон по словам и разговорной практике\n"
+        "📌 2 вебинара от Микки сонсенним\n"
+        "📌 Обратная связь от Микки сонсенним\n"
+        "Количество мест: 5\n"
+        "Цена: 24990 тенге / 3990 ₽"
     )
+    await message.answer(text, reply_markup=fourth_message_kb)
 
 async def send_useful_tips(message: Message):
     await message.answer(
@@ -110,34 +131,60 @@ async def send_useful_tips(message: Message):
         "📅 Старт основной программы — 15 января.\n"
         "И уже 15го запускается марафон по пополнению словарного запаса.\n"
         "Мы не просто учим слова - мы учимся использовать их в речи.\n"
-        "Также начнем с козырей - правильного произношения😎",
+        "Также начнем с козырей - правильного произношения😎 "
+        "Идеальное комбо = Правильное произношение + словарный запас",
         reply_markup=fifth_message_kb
     )
 
 async def send_final_message(message: Message):
-    await message.answer(
+    text = (
         "Еще один шаг и ты студент KOREAN MINIMAL\n"
-        "За 2 месяца обучения получишь все мои методы изучения корейского.",
-        reply_markup=subscription_kb
+        "За 2 месяца обучения получишь все мои методы изучения корейского за 10 лет изучения корейского. "
+        "Благодаря которому сейчас владею 6 уровнем ТOPIK, работала переводчиком в нефтяной компании.\n\n"
+        "Главный результат:\n"
+        "Полюбить логичный корейский язык\n"
+        "Пройти 1 уровень и увидеть результат\n"
+        "Цена: 12990 тенге / 1990 ₽"
     )
+    await message.answer(text, reply_markup=subscription_kb)
 
 # ================== ЦЕПОЧКА ==================
 def start_message_chain(user_id: int, message: Message):
+    if user_id not in active_users:
+        active_users[user_id] = {"paid": False, "tasks": []}
+
     async def chain():
-        await send_video(message)
+        # 1 — Видео сразу
+        if not active_users[user_id]["paid"]:
+            await send_video(message)
+
+        # 2 — PDF через 5 минут
         await asyncio.sleep(5 * 60)
-        await send_pdf(message)
+        if not active_users[user_id]["paid"]:
+            await send_pdf(message)
+
+        # 3 — Презентация курса через 10 минут после старта
         await asyncio.sleep(5 * 60)
-        await send_course_presentation(message)
+        if not active_users[user_id]["paid"]:
+            await send_course_presentation(message)
+
+        # 4 — Полезные советы через 15 минут после старта
         await asyncio.sleep(5 * 60)
-        await send_useful_tips(message)
+        if not active_users[user_id]["paid"]:
+            await send_useful_tips(message)
+
+        # 5 — Финальное сообщение через 3 часа
         await asyncio.sleep(3 * 60 * 60)
-        await send_final_message(message)
+        if not active_users[user_id]["paid"]:
+            await send_final_message(message)
+
+        # 6 — Подписка/напоминание через 3 дня
         await asyncio.sleep(3 * 24 * 60 * 60)
-        await message.answer(
-            "Напоминание: ещё есть бонусы и возможности подписки! 🚀",
-            reply_markup=subscription_kb
-        )
+        if not active_users[user_id]["paid"]:
+            await message.answer(
+                "Напоминание: ещё есть бонусы и возможности подписки! 🚀",
+                reply_markup=subscription_kb
+            )
 
     task = asyncio.create_task(chain())
     active_users[user_id]["tasks"].append(task)
@@ -145,7 +192,10 @@ def start_message_chain(user_id: int, message: Message):
 # ================== ХЕНДЛЕРЫ ==================
 @router.message(CommandStart())
 async def start(message: Message):
-    active_users[message.from_user.id] = {"tasks": []}
+    user_id = message.from_user.id
+    if user_id not in active_users:
+        active_users[user_id] = {"paid": False, "tasks": []}
+
     await message.answer(
         "안녕하세요!\n"
         "Рада приветствовать тебя! Я — твой персональный бот-помощник корейского\n"
@@ -163,22 +213,18 @@ async def start(message: Message):
 async def start_course(callback: CallbackQuery):
     user_id = callback.from_user.id
     await callback.answer()
-
-    if user_id not in active_users:
-        active_users[user_id] = {"tasks": []}
-
-    for task in active_users[user_id]["tasks"]:
+    # Удаляем старые задачи
+    for task in active_users.get(user_id, {}).get("tasks", []):
         task.cancel()
-    active_users[user_id]["tasks"] = []
-
+    active_users[user_id] = {"paid": False, "tasks": []}
     start_message_chain(user_id, callback.message)
 
 # ================== ЗАПУСК ==================
 async def start_bot():
     await dp.start_polling(bot)
 
+# ================== FLASK ==================
 app = Flask(__name__)
-
 @app.route("/")
 def home():
     return "Bot is running!"
