@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 # ================== ТОКЕН ==================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
-    logging.error("⚠️ BOT_TOKEN не найден! Проверь Worker Variables на Railway.")
+    logging.error("⚠️ BOT_TOKEN не найден!")
     raise SystemExit("❌ Установите переменную окружения BOT_TOKEN в Railway")
 
 # ================== MEDIA ==================
@@ -40,7 +40,7 @@ start_kb = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="🚀 Старт", callback_data="start_course")]]
 )
 
-# Кнопки 4-го сообщения
+# 4 сообщение — 3 кнопки
 fourth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -49,7 +49,7 @@ fourth_message_kb = InlineKeyboardMarkup(
     ]
 )
 
-# Кнопки 5-го сообщения
+# 5 сообщение — 2 кнопки
 fifth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оплатить «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -57,11 +57,9 @@ fifth_message_kb = InlineKeyboardMarkup(
     ]
 )
 
-# Кнопки 6-го сообщения
 subscription_kb = InlineKeyboardMarkup(
     inline_keyboard=[
-        [InlineKeyboardButton(text="Оформить подписку", url="https://web.tribute.tg/s/K0H")],
-        [InlineKeyboardButton(text="Оформить VIP", url="https://t.me/minimalkor")]
+        [InlineKeyboardButton(text="Оформить подписку", url="https://web.tribute.tg/s/K0H")]
     ]
 )
 
@@ -72,7 +70,7 @@ router = Router()
 dp.include_router(router)
 
 # ================== ГЛОБАЛЬНЫЕ ДАННЫЕ ==================
-active_users = {}  # user_id -> {"paid": bool, "task": asyncio_task}
+active_users = {}  # user_id -> {"paid": bool, "tasks": []}
 
 # ================== СООБЩЕНИЯ ==================
 async def send_video(message: Message):
@@ -134,7 +132,7 @@ async def send_course_presentation(message: Message):
             "Количество мест: 5\n"
             "Цена: 24990 тенге / 3990 ₽"
         )
-        await message.answer(text)
+        await message.answer(text, reply_markup=fourth_message_kb)
     except Exception as e:
         logging.error(f"Ошибка при отправке презентации курса: {e}")
 
@@ -147,7 +145,7 @@ async def send_useful_tips(message: Message):
             "Мы не просто учим слова - мы учимся использовать их в речи.\n"
             "Также начнем с козырей - правильного произношения😎 "
             "Идеальное комбо = Правильное произношение + словарный запас",
-            reply_markup=fourth_message_kb
+            reply_markup=fifth_message_kb
         )
     except Exception as e:
         logging.error(f"Ошибка при отправке полезных советов: {e}")
@@ -163,50 +161,37 @@ async def send_final_message(message: Message):
             "Пройти 1 уровень и увидеть результат\n"
             "Цена: 12990 тенге / 1990 ₽"
         )
-        await message.answer(text, reply_markup=fifth_message_kb)
+        await message.answer(text, reply_markup=subscription_kb)
     except Exception as e:
         logging.error(f"Ошибка при отправке финального сообщения: {e}")
 
-async def send_subscription_reminder(message: Message):
-    try:
-        await message.answer(
+# ================== ЦЕПОЧКА ==================
+def start_message_chain(user_id: int, message: Message):
+    if user_id not in active_users:
+        active_users[user_id] = {"paid": False, "tasks": []}
+
+    async def schedule_message(delay: int, func, msg, kb=None):
+        await asyncio.sleep(delay)
+        if not active_users[user_id]["paid"]:
+            if kb:
+                await func(msg)
+            else:
+                await func(msg)
+
+    # Создаем отдельные задачи для каждого сообщения
+    tasks = [
+        asyncio.create_task(send_video(message)),  # сразу
+        asyncio.create_task(schedule_message(5*60, send_pdf, message)),  # 5 минут
+        asyncio.create_task(schedule_message(10*60, send_course_presentation, message)),  # 10 минут
+        asyncio.create_task(schedule_message(15*60, send_useful_tips, message)),  # 15 минут
+        asyncio.create_task(schedule_message(3*60*60, send_final_message, message)),  # 3 часа
+        asyncio.create_task(schedule_message(3*24*60*60, lambda m: m.answer(
             "Напоминание: ещё есть бонусы и возможности подписки! 🚀",
             reply_markup=subscription_kb
-        )
-    except Exception as e:
-        logging.error(f"Ошибка при отправке подписки: {e}")
+        ), message))  # 3 дня
+    ]
 
-# ================== ЦЕПОЧКА С ТАЙМИНГАМИ ==================
-def start_message_chain(user_id: int, message: Message):
-    if user_id in active_users and active_users[user_id].get("task"):
-        # Цепочка уже запущена
-        return
-
-    async def chain():
-        try:
-            # 1 — Видео сразу
-            await send_video(message)
-            # 2 — PDF сразу после видео
-            await send_pdf(message)
-            # 3 — Презентация курса через 5 минут после PDF
-            await asyncio.sleep(5*60)
-            await send_course_presentation(message)
-            # 4 — Полезные советы через 5 минут после 3-го
-            await asyncio.sleep(5*60)
-            await send_useful_tips(message)
-            # 5 — Финальное сообщение через 3 часа после 4-го
-            await asyncio.sleep(3*60*60)
-            await send_final_message(message)
-            # 6 — Подписка / напоминание через 3 дня после 5-го
-            await asyncio.sleep(3*24*60*60)
-            await send_subscription_reminder(message)
-        except asyncio.CancelledError:
-            logging.info(f"[{user_id}] Цепочка сообщений отменена")
-        finally:
-            active_users[user_id]["task"] = None
-
-    task = asyncio.create_task(chain())
-    active_users[user_id] = {"paid": False, "task": task}
+    active_users[user_id]["tasks"] = tasks
     logging.info(f"[{user_id}] Запущена цепочка сообщений с таймингами")
 
 # ================== ХЕНДЛЕРЫ ==================
@@ -214,7 +199,7 @@ def start_message_chain(user_id: int, message: Message):
 async def start(message: Message):
     user_id = message.from_user.id
     if user_id not in active_users:
-        active_users[user_id] = {"paid": False, "task": None}
+        active_users[user_id] = {"paid": False, "tasks": []}
 
     await message.answer(
         "안녕하세요!\n"
@@ -225,15 +210,32 @@ async def start(message: Message):
         "• научиться быстро и правильно читать и писать;\n"
         "• легко запоминать слова и грамматику;\n"
         "• двигаться без хаоса и перегруза.\n"
-        "Готов(а) начать путь к корейскому, который действительно работает🇰🇷",
+        "Готов(а) начать путь к корейскому, который действительно работает?🇰🇷",
         reply_markup=start_kb
     )
 
 @router.callback_query(F.data == "start_course")
 async def start_course(callback: CallbackQuery):
-    user_id = callback.from_user.id
+    start_message_chain(callback.from_user.id, callback.message)
     await callback.answer()
-    start_message_chain(user_id, callback.message)
+
+@router.callback_query(F.data.startswith("pay_"))
+async def handle_payment(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    if user_id not in active_users:
+        active_users[user_id] = {"paid": False, "tasks": []}
+
+    active_users[user_id]["paid"] = True
+
+    # Отменяем все задачи
+    for task in active_users[user_id]["tasks"]:
+        task.cancel()
+    active_users[user_id]["tasks"] = []
+
+    await callback.message.answer(
+        f"Вы выбрали тариф ✅\n"
+        f"Пожалуйста, отправьте чек оплаты в Telegram: https://t.me/minimalkor"
+    )
 
 # ================== ЗАПУСК ==================
 async def start_bot():
