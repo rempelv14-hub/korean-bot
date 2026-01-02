@@ -40,6 +40,7 @@ start_kb = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="🚀 Старт", callback_data="start_course")]]
 )
 
+# 4-е сообщение — 3 кнопки
 fourth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -48,6 +49,7 @@ fourth_message_kb = InlineKeyboardMarkup(
     ]
 )
 
+# 5-е сообщение — 2 кнопки
 fifth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оплатить «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -68,7 +70,7 @@ router = Router()
 dp.include_router(router)
 
 # ================== ГЛОБАЛЬНЫЕ ДАННЫЕ ==================
-active_users = {}  # user_id -> {"paid": bool, "tasks": [asyncio_task]}
+active_users = {}  # user_id -> {"paid": bool, "tasks": []}
 
 # ================== СООБЩЕНИЯ ==================
 async def send_video(message: Message):
@@ -163,13 +165,24 @@ async def send_final_message(message: Message):
     except Exception as e:
         logging.error(f"Ошибка при отправке финального сообщения: {e}")
 
-# ================== ЦЕПОЧКА С ТАЙМИНГАМИ ==================
+async def send_subscription_reminder(message: Message):
+    try:
+        await message.answer(
+            "Напоминание: ещё есть бонусы и возможности подписки! 🚀",
+            reply_markup=subscription_kb
+        )
+    except Exception as e:
+        logging.error(f"Ошибка при отправке напоминания: {e}")
+
+# ================== ЦЕПОЧКА С ТОЧНЫМИ ТАЙМИНГАМИ ==================
 def start_message_chain(user_id: int, message: Message):
     if user_id not in active_users:
         active_users[user_id] = {"paid": False, "tasks": []}
 
     async def chain():
         try:
+            now = datetime.now(get_localzone())
+
             # 1 — Видео сразу
             if not active_users[user_id]["paid"]:
                 await send_video(message)
@@ -179,28 +192,25 @@ def start_message_chain(user_id: int, message: Message):
             if not active_users[user_id]["paid"]:
                 await send_pdf(message)
 
-            # 3 — Презентация курса через 5 минут после PDF
+            # 3 — Презентация курса через 10 минут после старта
             await asyncio.sleep(5 * 60)
             if not active_users[user_id]["paid"]:
                 await send_course_presentation(message)
 
-            # 4 — Полезные советы через 5 минут после презентации
+            # 4 — Полезные советы через 15 минут после старта
             await asyncio.sleep(5 * 60)
             if not active_users[user_id]["paid"]:
                 await send_useful_tips(message)
 
-            # 5 — Финальное сообщение через 3 часа после 4-го
+            # 5 — Финальное сообщение через 3 часа после старта
             await asyncio.sleep(3 * 60 * 60)
             if not active_users[user_id]["paid"]:
                 await send_final_message(message)
 
-            # 6 — Напоминание через 3 дня после 5-го
+            # 6 — Подписка / напоминание через 3 дня после старта
             await asyncio.sleep(3 * 24 * 60 * 60)
             if not active_users[user_id]["paid"]:
-                await message.answer(
-                    "Напоминание: ещё есть бонусы и возможности подписки! 🚀",
-                    reply_markup=subscription_kb
-                )
+                await send_subscription_reminder(message)
 
         except asyncio.CancelledError:
             logging.info(f"[{user_id}] Цепочка сообщений отменена")
@@ -209,7 +219,7 @@ def start_message_chain(user_id: int, message: Message):
 
     task = asyncio.create_task(chain())
     active_users[user_id]["tasks"].append(task)
-    logging.info(f"[{user_id}] Запущена цепочка сообщений с таймингами")
+    logging.info(f"[{user_id}] Запущена цепочка сообщений с точными таймингами")
 
 # ================== ХЕНДЛЕРЫ ==================
 @router.message(CommandStart())
@@ -227,7 +237,7 @@ async def start(message: Message):
         "• научиться быстро и правильно читать и писать;\n"
         "• легко запоминать слова и грамматику;\n"
         "• двигаться без хаоса и перегруза.\n"
-        "Готов(а) начать путь к корейскому, который действительно работает? 🇰🇷",
+        "Готов(а) начать путь к корейскому, который действительно работает🇰🇷",
         reply_markup=start_kb
     )
 
@@ -249,6 +259,7 @@ async def handle_payment(callback: CallbackQuery):
 
     active_users[user_id]["paid"] = True
 
+    # Отменяем все задачи
     for task in active_users[user_id]["tasks"]:
         task.cancel()
     active_users[user_id]["tasks"] = []
