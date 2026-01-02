@@ -1,13 +1,14 @@
 import asyncio
 import os
 import logging
+from datetime import datetime
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from flask import Flask
 
 # ================== ЛОГИРОВАНИЕ ==================
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # ================== ТОКЕН ==================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -36,7 +37,6 @@ start_kb = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="🚀 Старт", callback_data="start_course")]]
 )
 
-# 4-е сообщение — 3 кнопки
 fourth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оформить тариф «стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -45,7 +45,6 @@ fourth_message_kb = InlineKeyboardMarkup(
     ]
 )
 
-# 5-е сообщение — 2 кнопки
 fifth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оплатить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -66,7 +65,7 @@ router = Router()
 dp.include_router(router)
 
 # ================== ГЛОБАЛЬНЫЕ ДАННЫЕ ==================
-active_users = {}  # user_id -> {"paid": bool, "tasks": [asyncio_task]}
+active_users = {}  # user_id -> {"tasks": [asyncio_task]}
 
 # ================== СООБЩЕНИЯ ==================
 async def send_video(message: Message):
@@ -77,6 +76,7 @@ async def send_video(message: Message):
         f"👉 Смотри видео: {VIDEO_URL}\n"
         "После просмотра тебя ждёт ещё один бонус ✨\n(я пришлю его чуть позже)"
     )
+    logging.info(f"[{message.from_user.id}] Отправлено 1-е сообщение (видео)")
 
 async def send_pdf(message: Message):
     await message.answer(
@@ -88,6 +88,7 @@ async def send_pdf(message: Message):
         await message.answer_document(FSInputFile(PDF_PATH))
     else:
         await message.answer("⚠️ PDF не найден")
+    logging.info(f"[{message.from_user.id}] Отправлено 2-е сообщение (PDF)")
 
 async def send_course_presentation(message: Message):
     text = (
@@ -122,6 +123,7 @@ async def send_course_presentation(message: Message):
         "Цена: 24990 тенге / 3990 ₽"
     )
     await message.answer(text)
+    logging.info(f"[{message.from_user.id}] Отправлено 3-е сообщение (Презентация курса)")
 
 async def send_useful_tips(message: Message):
     await message.answer(
@@ -133,6 +135,7 @@ async def send_useful_tips(message: Message):
         "Идеальное комбо = Правильное произношение + словарный запас",
         reply_markup=fourth_message_kb
     )
+    logging.info(f"[{message.from_user.id}] Отправлено 4-е сообщение (Полезные советы)")
 
 async def send_final_message(message: Message):
     text = (
@@ -145,40 +148,39 @@ async def send_final_message(message: Message):
         "Цена: 12990 тенге / 1990 ₽"
     )
     await message.answer(text, reply_markup=fifth_message_kb)
+    logging.info(f"[{message.from_user.id}] Отправлено 5-е сообщение (Финальное сообщение)")
 
 async def send_subscription_reminder(message: Message):
     await message.answer(
         "Напоминание: ещё есть бонусы и возможности подписки! 🚀",
         reply_markup=subscription_kb
     )
+    logging.info(f"[{message.from_user.id}] Отправлено 6-е сообщение (Напоминание)")
 
-# ================== ЦЕПОЧКА С НОВЫМИ ТАЙМИНГАМИ ==================
+# ================== ЦЕПОЧКА С ТАЙМИНГАМИ ==================
 def start_message_chain(user_id: int, message: Message):
     if user_id not in active_users:
-        active_users[user_id] = {"paid": False, "tasks": []}
+        active_users[user_id] = {"tasks": []}
 
     async def chain():
         try:
-            # 1 — Видео сразу
+            # 1 и 2 — сразу
             await send_video(message)
-
-            # 2 — PDF через 5 минут
-            await asyncio.sleep(5 * 60)
             await send_pdf(message)
 
-            # 3 — Презентация курса через 5 минут после PDF
+            # 3 — через 5 минут
             await asyncio.sleep(5 * 60)
             await send_course_presentation(message)
 
-            # 4 — Полезные советы через 5 минут после 3-го
-            await asyncio.sleep(5 * 60)
+            # 4 — через 10 минут после 3-го
+            await asyncio.sleep(10 * 60)
             await send_useful_tips(message)
 
-            # 5 — Финальное сообщение через 3 часа после 4-го
+            # 5 — через 3 часа после 4-го
             await asyncio.sleep(3 * 60 * 60)
             await send_final_message(message)
 
-            # 6 — Подписка / напоминание через 3 дня после 5-го
+            # 6 — через 3 дня после 5-го
             await asyncio.sleep(3 * 24 * 60 * 60)
             await send_subscription_reminder(message)
 
@@ -191,12 +193,12 @@ def start_message_chain(user_id: int, message: Message):
     active_users[user_id]["tasks"].append(task)
     logging.info(f"[{user_id}] Запущена цепочка сообщений")
 
-# ================== ХЕНДЛЕРЫ ==================
+# ================== ХЕНДЛЕР ==================
 @router.message(CommandStart())
 async def start(message: Message):
     user_id = message.from_user.id
     if user_id not in active_users:
-        active_users[user_id] = {"paid": False, "tasks": []}
+        active_users[user_id] = {"tasks": []}
 
     await message.answer(
         "안녕하세요!\n"
