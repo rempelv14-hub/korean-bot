@@ -4,7 +4,6 @@ import logging
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
-from tzlocal import get_localzone
 from flask import Flask
 
 # ================== ЛОГИРОВАНИЕ ==================
@@ -37,6 +36,7 @@ start_kb = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="🚀 Старт", callback_data="start_course")]]
 )
 
+# 4-е сообщение кнопки
 fourth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -45,6 +45,7 @@ fourth_message_kb = InlineKeyboardMarkup(
     ]
 )
 
+# 5-е сообщение кнопки
 fifth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оплатить «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -85,6 +86,8 @@ async def send_pdf(message: Message):
     )
     if PDF_PATH and os.path.exists(PDF_PATH):
         await message.answer_document(FSInputFile(PDF_PATH))
+    else:
+        await message.answer("⚠️ PDF не найден")
 
 async def send_course_presentation(message: Message):
     text = (
@@ -132,16 +135,16 @@ async def send_useful_tips(message: Message):
     )
 
 async def send_final_message(message: Message):
-    text = (
+    await message.answer(
         "Еще один шаг и ты студент KOREAN MINIMAL\n"
         "За 2 месяца обучения получишь все мои методы изучения корейского за 10 лет изучения корейского. "
         "Благодаря которому сейчас владею 6 уровнем ТOPIK, работала переводчиком в нефтяной компании.\n\n"
         "Главный результат:\n"
         "Полюбить логичный корейский язык\n"
         "Пройти 1 уровень и увидеть результат\n"
-        "Цена: 12990 тенге / 1990 ₽"
+        "Цена: 12990 тенге / 1990 ₽",
+        reply_markup=fifth_message_kb
     )
-    await message.answer(text, reply_markup=fifth_message_kb)
 
 async def send_subscription_reminder(message: Message):
     await message.answer(
@@ -149,46 +152,42 @@ async def send_subscription_reminder(message: Message):
         reply_markup=subscription_kb
     )
 
-# ================== ЦЕПОЧКА С КОНКРЕТНЫМИ ТАЙМИНГАМИ ==================
+# ================== ЦЕПОЧКА С ТАЙМИНГАМИ ==================
 def start_message_chain(user_id: int, message: Message):
     if user_id not in active_users:
         active_users[user_id] = {"paid": False, "tasks": []}
 
     async def chain():
-        # 1 — Видео сразу
-        if not active_users[user_id]["paid"]:
-            await send_video(message)
+        try:
+            if not active_users[user_id]["paid"]:
+                # 1 и 2 сообщения сразу
+                await send_video(message)
+                await send_pdf(message)
 
-        # 2 — PDF через 5 минут
-        await asyncio.sleep(5*60)
-        if not active_users[user_id]["paid"]:
-            await send_pdf(message)
+                # 3 сообщение через 5 минут после 2-го
+                await asyncio.sleep(5*60)
+                await send_course_presentation(message)
 
-        # 3 — Презентация курса через 5 минут после PDF
-        await asyncio.sleep(5*60)
-        if not active_users[user_id]["paid"]:
-            await send_course_presentation(message)
+                # 4 сообщение через 5 минут после 3-го
+                await asyncio.sleep(5*60)
+                await send_useful_tips(message)
 
-        # 4 — Полезные советы через 5 минут после 3-го, с 3 кнопками
-        await asyncio.sleep(5*60)
-        if not active_users[user_id]["paid"]:
-            await send_useful_tips(message)
+                # 5 сообщение через 3 часа после 4-го
+                await asyncio.sleep(3*60*60)
+                await send_final_message(message)
 
-        # 5 — Финальное сообщение через 3 часа после 4-го, с 2 кнопками
-        await asyncio.sleep(3*60*60)
-        if not active_users[user_id]["paid"]:
-            await send_final_message(message)
+                # 6 сообщение через 3 дня после 5-го
+                await asyncio.sleep(3*24*60*60)
+                await send_subscription_reminder(message)
 
-        # 6 — Подписка / напоминание через 3 дня после 5-го
-        await asyncio.sleep(3*24*60*60)
-        if not active_users[user_id]["paid"]:
-            await send_subscription_reminder(message)
-
-        active_users[user_id]["tasks"] = []
+        except asyncio.CancelledError:
+            logging.info(f"[{user_id}] Цепочка сообщений отменена")
+        finally:
+            active_users[user_id]["tasks"] = []
 
     task = asyncio.create_task(chain())
     active_users[user_id]["tasks"].append(task)
-    logging.info(f"[{user_id}] Запущена цепочка сообщений")
+    logging.info(f"[{user_id}] Запущена цепочка сообщений с таймингами")
 
 # ================== ХЕНДЛЕРЫ ==================
 @router.message(CommandStart())
@@ -215,9 +214,24 @@ async def start_course(callback: CallbackQuery):
     user_id = callback.from_user.id
     if user_id not in active_users:
         active_users[user_id] = {"paid": False, "tasks": []}
-
     await callback.answer()
     start_message_chain(user_id, callback.message)
+
+@router.callback_query(F.data.startswith("pay_"))
+async def handle_payment(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    if user_id not in active_users:
+        active_users[user_id] = {"paid": False, "tasks": []}
+
+    active_users[user_id]["paid"] = True
+    for task in active_users[user_id]["tasks"]:
+        task.cancel()
+    active_users[user_id]["tasks"] = []
+
+    await callback.message.answer(
+        f"Вы выбрали тариф ✅\n"
+        f"Пожалуйста, отправьте чек оплаты в Telegram: https://t.me/minimalkor"
+    )
 
 # ================== ЗАПУСК ==================
 async def start_bot():
