@@ -40,7 +40,6 @@ start_kb = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="🚀 Старт", callback_data="start_course")]]
 )
 
-# 4-е сообщение кнопки
 fourth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -49,7 +48,6 @@ fourth_message_kb = InlineKeyboardMarkup(
     ]
 )
 
-# 5-е сообщение кнопки
 fifth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оплатить «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -59,7 +57,7 @@ fifth_message_kb = InlineKeyboardMarkup(
 
 subscription_kb = InlineKeyboardMarkup(
     inline_keyboard=[
-        [InlineKeyboardButton(text="Оформить подписку", url="https://web.tribute.tg/s/K0H")]
+        [InlineKeyboardButton(text="Оформить подписку", url="https://t.me/tribute/app?startapp=sK0H")]
     ]
 )
 
@@ -186,7 +184,7 @@ def start_message_chain(user_id: int, message: Message):
             if not active_users[user_id]["paid"]:
                 await send_course_presentation(message)
 
-            # 4 — Полезные советы через 5 минут после 3-го
+            # 4 — Полезные советы через 5 минут после презентации
             await asyncio.sleep(5 * 60)
             if not active_users[user_id]["paid"]:
                 await send_useful_tips(message)
@@ -196,7 +194,7 @@ def start_message_chain(user_id: int, message: Message):
             if not active_users[user_id]["paid"]:
                 await send_final_message(message)
 
-            # 6 — Подписка / напоминание через 3 дня после 5-го
+            # 6 — Напоминание через 3 дня после 5-го
             await asyncio.sleep(3 * 24 * 60 * 60)
             if not active_users[user_id]["paid"]:
                 await message.answer(
@@ -229,7 +227,7 @@ async def start(message: Message):
         "• научиться быстро и правильно читать и писать;\n"
         "• легко запоминать слова и грамматику;\n"
         "• двигаться без хаоса и перегруза.\n"
-        "Готов(а) начать путь к корейскому, который действительно работает?🇰🇷",
+        "Готов(а) начать путь к корейскому, который действительно работает? 🇰🇷",
         reply_markup=start_kb
     )
 
@@ -251,7 +249,6 @@ async def handle_payment(callback: CallbackQuery):
 
     active_users[user_id]["paid"] = True
 
-    # Отменяем все задачи
     for task in active_users[user_id]["tasks"]:
         task.cancel()
     active_users[user_id]["tasks"] = []
