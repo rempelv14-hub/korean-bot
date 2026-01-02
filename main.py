@@ -2,7 +2,6 @@ import asyncio
 import os
 import logging
 from datetime import datetime, timedelta
-from threading import Thread
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart
@@ -41,6 +40,7 @@ start_kb = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="🚀 Старт", callback_data="start_course")]]
 )
 
+# 4-е сообщение кнопки
 fourth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -49,6 +49,7 @@ fourth_message_kb = InlineKeyboardMarkup(
     ]
 )
 
+# 5-е сообщение кнопки
 fifth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оплатить «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -100,7 +101,7 @@ async def send_pdf(message: Message):
 
 async def send_course_presentation(message: Message):
     try:
-        await message.answer(
+        text = (
             "А все что в календаре, что ждёт тебя на курсе Система KOREAN MINIMAL 👇\n"
             "На курсе за месяц ты:\n"
             "• научишься быстро и правильно читать;\n"
@@ -131,6 +132,7 @@ async def send_course_presentation(message: Message):
             "Количество мест: 5\n"
             "Цена: 24990 тенге / 3990 ₽"
         )
+        await message.answer(text)
     except Exception as e:
         logging.error(f"Ошибка при отправке презентации курса: {e}")
 
@@ -150,16 +152,16 @@ async def send_useful_tips(message: Message):
 
 async def send_final_message(message: Message):
     try:
-        await message.answer(
+        text = (
             "Еще один шаг и ты студент KOREAN MINIMAL\n"
             "За 2 месяца обучения получишь все мои методы изучения корейского за 10 лет изучения корейского. "
             "Благодаря которому сейчас владею 6 уровнем ТOPIK, работала переводчиком в нефтяной компании.\n\n"
             "Главный результат:\n"
             "Полюбить логичный корейский язык\n"
             "Пройти 1 уровень и увидеть результат\n"
-            "Цена: 12990 тенге / 1990 ₽",
-            reply_markup=fifth_message_kb
+            "Цена: 12990 тенге / 1990 ₽"
         )
+        await message.answer(text, reply_markup=fifth_message_kb)
     except Exception as e:
         logging.error(f"Ошибка при отправке финального сообщения: {e}")
 
@@ -175,32 +177,33 @@ def start_message_chain(user_id: int, message: Message):
                 await send_video(message)
 
             # 2 — PDF через 5 минут
-            await asyncio.sleep(5*60)
+            await asyncio.sleep(5 * 60)
             if not active_users[user_id]["paid"]:
                 await send_pdf(message)
 
-            # 3 — Презентация курса через 10 минут после старта (5 минут после PDF)
-            await asyncio.sleep(5*60)
+            # 3 — Презентация курса через 5 минут после PDF
+            await asyncio.sleep(5 * 60)
             if not active_users[user_id]["paid"]:
                 await send_course_presentation(message)
 
-            # 4 — Полезные советы через 15 минут после старта (5 минут после 3-го)
-            await asyncio.sleep(5*60)
+            # 4 — Полезные советы через 5 минут после 3-го
+            await asyncio.sleep(5 * 60)
             if not active_users[user_id]["paid"]:
                 await send_useful_tips(message)
 
-            # 5 — Финальное сообщение через 3 часа после старта
-            await asyncio.sleep(3*60*60)
+            # 5 — Финальное сообщение через 3 часа после 4-го
+            await asyncio.sleep(3 * 60 * 60)
             if not active_users[user_id]["paid"]:
                 await send_final_message(message)
 
-            # 6 — Подписка / напоминание через 3 дня
-            await asyncio.sleep(3*24*60*60)
+            # 6 — Подписка / напоминание через 3 дня после 5-го
+            await asyncio.sleep(3 * 24 * 60 * 60)
             if not active_users[user_id]["paid"]:
                 await message.answer(
                     "Напоминание: ещё есть бонусы и возможности подписки! 🚀",
                     reply_markup=subscription_kb
                 )
+
         except asyncio.CancelledError:
             logging.info(f"[{user_id}] Цепочка сообщений отменена")
         finally:
@@ -233,11 +236,30 @@ async def start(message: Message):
 @router.callback_query(F.data == "start_course")
 async def start_course(callback: CallbackQuery):
     user_id = callback.from_user.id
+
     if user_id not in active_users:
         active_users[user_id] = {"paid": False, "tasks": []}
 
     await callback.answer()
     start_message_chain(user_id, callback.message)
+
+@router.callback_query(F.data.startswith("pay_"))
+async def handle_payment(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    if user_id not in active_users:
+        active_users[user_id] = {"paid": False, "tasks": []}
+
+    active_users[user_id]["paid"] = True
+
+    # Отменяем все задачи
+    for task in active_users[user_id]["tasks"]:
+        task.cancel()
+    active_users[user_id]["tasks"] = []
+
+    await callback.message.answer(
+        f"Вы выбрали тариф ✅\n"
+        f"Пожалуйста, отправьте чек оплаты в Telegram: https://t.me/minimalkor"
+    )
 
 # ================== ЗАПУСК ==================
 async def start_bot():
@@ -252,7 +274,4 @@ def home():
     return "Bot is running!"
 
 if __name__ == "__main__":
-    import nest_asyncio
-    nest_asyncio.apply()  # для совместимости с Flask
-    Thread(target=lambda: asyncio.run(start_bot())).start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    asyncio.run(start_bot())
