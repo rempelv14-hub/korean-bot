@@ -1,11 +1,18 @@
 import asyncio
 import os
 import logging
+
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import CommandStart
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    FSInputFile,
+)
 
-from flask import Flask
+from aiohttp import web
 
 # ================== ЛОГИРОВАНИЕ ==================
 logging.basicConfig(level=logging.INFO)
@@ -21,6 +28,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
 VIDEO_URL = "https://youtu.be/uKKyn7wCKXE?si=Klz0s_l-jsvJCVTv"
 
+
 def find_pdf():
     if not os.path.exists(MEDIA_DIR):
         return None
@@ -28,6 +36,7 @@ def find_pdf():
         if file.lower().endswith(".pdf"):
             return os.path.join(MEDIA_DIR, file)
     return None
+
 
 PDF_PATH = find_pdf()
 logging.info(f"PDF найден: {PDF_PATH}")
@@ -41,14 +50,14 @@ fourth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
         [InlineKeyboardButton(text="Оформить тариф «VIP»", url="https://t.me/minimalkor")],
-        [InlineKeyboardButton(text="Подписаться на канал", url="https://t.me/minimalkorean")]
+        [InlineKeyboardButton(text="Подписаться на канал", url="https://t.me/minimalkorean")],
     ]
 )
 
 fifth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оплатить «Стандарт»", url="https://web.tribute.tg/s/K0H")],
-        [InlineKeyboardButton(text="Оплатить «VIP»", url="https://t.me/minimalkor")]
+        [InlineKeyboardButton(text="Оплатить «VIP»", url="https://t.me/minimalkor")],
     ]
 )
 
@@ -65,7 +74,9 @@ router = Router()
 dp.include_router(router)
 
 # ================== ГЛОБАЛЬНЫЕ ДАННЫЕ ==================
-active_users = {}  # user_id -> {"tasks": [asyncio_task]}
+# Чтобы сообщения НЕ дублировались при повторном нажатии "Старт"
+user_chain_tasks: dict[int, asyncio.Task] = {}  # user_id -> asyncio.Task
+
 
 # ================== СООБЩЕНИЯ ==================
 async def send_first(message: Message):
@@ -79,8 +90,9 @@ async def send_first(message: Message):
         "• легко запоминать слова и грамматику;\n"
         "• двигаться без хаоса и перегруза.\n"
         "Готов(а) начать путь к корейскому, который действительно работает🇰🇷",
-        reply_markup=start_kb
+        reply_markup=start_kb,
     )
+
 
 async def send_second(message: Message):
     await message.answer(
@@ -90,6 +102,7 @@ async def send_second(message: Message):
         f"👉 Смотри видео: {VIDEO_URL}\n"
         "После просмотра тебя ждёт ещё один бонус ✨\n(я пришлю его чуть позже)"
     )
+
 
 async def send_third(message: Message):
     await message.answer(
@@ -101,6 +114,7 @@ async def send_third(message: Message):
         await message.answer_document(FSInputFile(PDF_PATH))
     else:
         await message.answer("⚠️ PDF не найден")
+
 
 async def send_fourth(message: Message):
     await message.answer(
@@ -138,8 +152,9 @@ async def send_fourth(message: Message):
         "Количество мест: 5\n"
         "Цена: 24990 тенге/ 3990 ₽ в месяц\n"
         "Кто готов, нажимайте кнопку👇",
-        reply_markup=fourth_message_kb
+        reply_markup=fourth_message_kb,
     )
+
 
 async def send_fifth(message: Message):
     await message.answer(
@@ -149,8 +164,9 @@ async def send_fifth(message: Message):
         "Мы не просто учим слова - мы учимся использовать их в речи.\n"
         "Также начнем с козырей правильного произношения😎 Идеальное комбо\n"
         "Правильное произношение + словарный запас",
-        reply_markup=fifth_message_kb
+        reply_markup=fifth_message_kb,
     )
+
 
 async def send_sixth(message: Message):
     await message.answer(
@@ -161,13 +177,16 @@ async def send_sixth(message: Message):
         "Полюбить логичный корейский язык\n"
         "Пройти 1 уровень и увидеть результат\n"
         "Цена: 12990 тенге / 1990 ₽",
-        reply_markup=sixth_message_kb
+        reply_markup=sixth_message_kb,
     )
+
 
 # ================== ЦЕПОЧКА ==================
 def start_chain(user_id: int, message: Message):
-    if user_id not in active_users:
-        active_users[user_id] = {"tasks": []}
+    # Отменяем старую цепочку, если человек нажал "Старт" повторно
+    old_task = user_chain_tasks.get(user_id)
+    if old_task and not old_task.done():
+        old_task.cancel()
 
     async def chain():
         try:
@@ -189,34 +208,67 @@ def start_chain(user_id: int, message: Message):
 
         except asyncio.CancelledError:
             logging.info(f"[{user_id}] Цепочка отменена")
-        finally:
-            active_users[user_id]["tasks"] = []
 
     task = asyncio.create_task(chain())
-    active_users[user_id]["tasks"].append(task)
+    user_chain_tasks[user_id] = task
     logging.info(f"[{user_id}] Запущена цепочка сообщений")
+
 
 # ================== ХЕНДЛЕРЫ ==================
 @router.message(CommandStart())
 async def start(message: Message):
     await send_first(message)
 
+
 @router.callback_query(F.data == "start_course")
 async def start_course(callback: CallbackQuery):
+    # быстро отвечаем на callback, чтобы не было "крутилки"
     await callback.answer()
+
+    # чтобы не нажимали кнопку много раз подряд — убираем клавиатуру у первого сообщения
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
     await send_second(callback.message)
     start_chain(callback.from_user.id, callback.message)
+
+
+# ================== AIOHTTP (для Railway healthcheck) ==================
+async def health(request: web.Request):
+    return web.Response(text="Bot is running!")
+
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", health)
+    port = int(os.environ.get("PORT", "8080"))
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, host="0.0.0.0", port=port)
+    await site.start()
+    logging.info(f"Web server started on port {port}")
+
 
 # ================== ЗАПУСК ==================
 async def start_bot():
     logging.info("Бот запущен")
+
+    # важно для Railway/после webhook: выключаем webhook и чистим очередь
+    await bot.delete_webhook(drop_pending_updates=True)
+
     await dp.start_polling(bot)
 
-# ================== FLASK ==================
-app = Flask(__name__)
-@app.route("/")
-def home():
-    return "Bot is running!"
+
+async def main():
+    await start_web_server()
+    await start_bot()
+
 
 if __name__ == "__main__":
-    asyncio.run(start_bot())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
