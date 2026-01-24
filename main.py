@@ -74,9 +74,7 @@ router = Router()
 dp.include_router(router)
 
 # ================== ГЛОБАЛЬНЫЕ ДАННЫЕ ==================
-# Чтобы сообщения НЕ дублировались при повторном нажатии "Старт"
-user_chain_tasks: dict[int, asyncio.Task] = {}  # user_id -> asyncio.Task
-
+user_chain_tasks: dict[int, asyncio.Task] = {}
 
 # ================== СООБЩЕНИЯ ==================
 async def send_first(message: Message):
@@ -116,14 +114,15 @@ async def send_third(message: Message):
         await message.answer("⚠️ PDF не найден")
 
 
+# ================== ИЗМЕНЁННОЕ 4 СООБЩЕНИЕ ==================
 async def send_fourth(message: Message):
     await message.answer(
-        "А все что в календаре,ждёт тебя на курсе Система KOREAN MINIMAL  👇\n\n"
-        "На курсе за месяц ты:\n\n"
-        "▫️научишься быстро и правильно читать;\n"
-        "▫️начнёшь красиво писать и понимать логику языка;\n"
-        "▫️создашь личный план изучения корейского, который реально работает;\n"
-        "▫️начнёшь говорить на корейском уже в процессе обучения.\n\n"
+        "А все что в календаре, ждёт тебя на курсе Система KOREAN MINIMAL 👇\n"
+        "На курсе за месяц ты:\n"
+        "• научишься быстро и правильно читать;\n"
+        "• начнёшь красиво писать и понимать логику языка;\n"
+        "• создашь личный план изучения корейского, который реально работает;\n"
+        "• начнёшь говорить на корейском уже в процессе обучения.\n\n"
         "Курс состоит из 4 модулей:\n"
         "🔹 Модуль 1 — Чтение\n"
         "Освоение ассимиляции и произношения.\n"
@@ -132,23 +131,23 @@ async def send_fourth(message: Message):
         "🔹 Модуль 3 — Говорить без страха\n"
         "Построение фраз, уверенная речь.\n"
         "🔹 Модуль 4 — Скорочтение\n"
-        "Быстрое понимание текста и развитие скорости чтения.\n\n"
+        "Быстрое понимание текста и развитие скорости чтения.\n"
         "Тариф “стандарт” включает:\n"
         "📌 Большие выпуски о методах и правильном чтении\n"
         "📌 16 уроков по словарному запасу\n"
         "📌 8 уроков грамматики\n"
         "📌 Видео-разборы корейских песен\n"
         "📌 Марафон по словам и разговорной практике\n"
-        "📌 Обратная связь \n\n"
-        "Цена: 12990 тенге/ 1990 ₽ в месяц\n\n"
+        "📌 Обратная связь от ментора\n"
+        "Цена: 12990 тенге/ 1990 ₽ в месяц\n"
         "Тариф “VIP” включает:\n"
         "📌 Большие выпуски о методах и правильном чтении\n"
         "📌 16 уроков по словарному запасу\n"
         "📌 8 уроков грамматики\n"
         "📌 Видео-разборы корейских песен\n"
         "📌 Марафон по словам и разговорной практике\n"
-        "📌 2 вебинара от Микки сонсенним (в живое время)\n"
-        "📌 Обратная связь\n\n"
+        "📌 2 вебинара от Микки сонсенним\n"
+        "📌 Обратная связь от Микки сонсенним\n"
         "Количество мест: 5\n"
         "Цена: 24990 тенге/ 3990 ₽ в месяц\n"
         "Кто готов, нажимайте кнопку👇",
@@ -180,38 +179,30 @@ async def send_sixth(message: Message):
         reply_markup=sixth_message_kb,
     )
 
-
 # ================== ЦЕПОЧКА ==================
 def start_chain(user_id: int, message: Message):
-    # Отменяем старую цепочку, если человек нажал "Старт" повторно
     old_task = user_chain_tasks.get(user_id)
     if old_task and not old_task.done():
         old_task.cancel()
 
     async def chain():
         try:
-            # 3-е сообщение через 5 минут после 2-го
             await asyncio.sleep(5 * 60)
             await send_third(message)
 
-            # 4-е сообщение через 10 минут после 2-го
             await asyncio.sleep(5 * 60)
             await send_fourth(message)
 
-            # 5-е сообщение через 3 часа после 2-го
-            await asyncio.sleep(3 * 60 * 60 - 10 * 60)  # вычитаем уже прошло время
+            await asyncio.sleep(3 * 60 * 60 - 10 * 60)
             await send_fifth(message)
 
-            # 6-е сообщение через 3 дня после 2-го
             await asyncio.sleep(3 * 24 * 60 * 60)
             await send_sixth(message)
 
         except asyncio.CancelledError:
             logging.info(f"[{user_id}] Цепочка отменена")
 
-    task = asyncio.create_task(chain())
-    user_chain_tasks[user_id] = task
-    logging.info(f"[{user_id}] Запущена цепочка сообщений")
+    user_chain_tasks[user_id] = asyncio.create_task(chain())
 
 
 # ================== ХЕНДЛЕРЫ ==================
@@ -222,10 +213,7 @@ async def start(message: Message):
 
 @router.callback_query(F.data == "start_course")
 async def start_course(callback: CallbackQuery):
-    # быстро отвечаем на callback, чтобы не было "крутилки"
     await callback.answer()
-
-    # чтобы не нажимали кнопку много раз подряд — убираем клавиатуру у первого сообщения
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
@@ -235,7 +223,7 @@ async def start_course(callback: CallbackQuery):
     start_chain(callback.from_user.id, callback.message)
 
 
-# ================== AIOHTTP (для Railway healthcheck) ==================
+# ================== WEB (Railway) ==================
 async def health(request: web.Request):
     return web.Response(text="Bot is running!")
 
@@ -244,31 +232,17 @@ async def start_web_server():
     app = web.Application()
     app.router.add_get("/", health)
     port = int(os.environ.get("PORT", "8080"))
-
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=port)
-    await site.start()
-    logging.info(f"Web server started on port {port}")
+    await web.TCPSite(runner, "0.0.0.0", port).start()
 
 
 # ================== ЗАПУСК ==================
-async def start_bot():
-    logging.info("Бот запущен")
-
-    # важно для Railway/после webhook: выключаем webhook и чистим очередь
+async def main():
+    await start_web_server()
     await bot.delete_webhook(drop_pending_updates=True)
-
     await dp.start_polling(bot)
 
 
-async def main():
-    await start_web_server()
-    await start_bot()
-
-
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+    asyncio.run(main())
