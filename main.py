@@ -137,7 +137,7 @@ async def send_fourth(message: Message):
         "📌 Обратная связь\n\n"
         "Количество мест: 5\n"
         "Цена: 24990 тенге/ 3990 ₽ в месяц\n"
-        "Кто готов, нажимайте кнопку👇"
+        "Кто готов, нажимайте кнопку👇",
         reply_markup=fourth_message_kb
     )
 
@@ -220,7 +220,3 @@ def home():
 
 if __name__ == "__main__":
     asyncio.run(start_bot())
-
-
-
-
