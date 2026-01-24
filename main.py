@@ -46,28 +46,6 @@ start_kb = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="🚀 Старт", callback_data="start_course")]]
 )
 
-# Кнопки для 4-го сообщения: тарифы + "штрихи" (вместо текста "показать цену")
-fourth_message_kb = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="💳 Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
-        [InlineKeyboardButton(text="💎 Оформить тариф «VIP»", url="https://t.me/minimalkor")],
-        [
-            InlineKeyboardButton(text="░░░░░░░░░░░░", callback_data="show_price_standard"),
-            InlineKeyboardButton(text="░░░░░░░░░░░░", callback_data="show_price_vip"),
-        ],
-        [InlineKeyboardButton(text="📌 Подписаться на канал", url="https://t.me/minimalkorean")],
-    ]
-)
-
-# Кнопки для 4-го сообщения ПОСЛЕ ПОКАЗА ЦЕНЫ (без "штрихов")
-fourth_message_kb_no_price = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="💳 Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
-        [InlineKeyboardButton(text="💎 Оформить тариф «VIP»", url="https://t.me/minimalkor")],
-        [InlineKeyboardButton(text="📌 Подписаться на канал", url="https://t.me/minimalkorean")],
-    ]
-)
-
 fifth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оплатить «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -145,6 +123,25 @@ def build_fourth_text(show_standard: bool, show_vip: bool) -> str:
         "Кто готов, нажимайте кнопку 👇"
     )
 
+
+def build_fourth_kb(show_standard: bool, show_vip: bool) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text="💳 Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
+        [InlineKeyboardButton(text="💎 Оформить тариф «VIP»", url="https://t.me/minimalkor")],
+    ]
+
+    # "штрих" стандарт (показываем только пока цена скрыта)
+    if not show_standard:
+        rows.append([InlineKeyboardButton(text="░░░░░░░░░░░░", callback_data="show_price_standard")])
+
+    # "штрих" VIP (показываем только пока цена скрыта)
+    if not show_vip:
+        rows.append([InlineKeyboardButton(text="░░░░░░░░░░░░", callback_data="show_price_vip")])
+
+    rows.append([InlineKeyboardButton(text="📌 Подписаться на канал", url="https://t.me/minimalkorean")])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
 # ================== СООБЩЕНИЯ ==================
 async def send_first(message: Message):
     await message.answer(
@@ -190,7 +187,7 @@ async def send_fourth(message: Message):
 
     sent = await message.answer(
         build_fourth_text(False, False),
-        reply_markup=fourth_message_kb
+        reply_markup=build_fourth_kb(False, False)
     )
     user_fourth_msg_id[message.chat.id] = sent.message_id
 
@@ -262,7 +259,7 @@ async def start_course(callback: CallbackQuery):
     start_chain(callback.from_user.id, callback.message)
 
 
-# Нажал на "штрих" слева → раскрываем стандарт и УБИРАЕМ "штрихи"
+# Нажал на "штрих" стандарт → раскрываем стандарт (штрих стандарта исчезнет, VIP штрих останется)
 @router.callback_query(F.data == "show_price_standard")
 async def show_price_standard(callback: CallbackQuery):
     await callback.answer()
@@ -274,15 +271,17 @@ async def show_price_standard(callback: CallbackQuery):
     fourth_prices_state[chat_id] = state
 
     new_text = build_fourth_text(state["standard"], state["vip"])
+    new_kb = build_fourth_kb(state["standard"], state["vip"])
+
     await bot.edit_message_text(
         chat_id=chat_id,
         message_id=msg_id,
         text=new_text,
-        reply_markup=fourth_message_kb_no_price,
+        reply_markup=new_kb,
     )
 
 
-# Нажал на "штрих" справа → раскрываем VIP и УБИРАЕМ "штрихи"
+# Нажал на "штрих" VIP → раскрываем VIP (штрих VIP исчезнет, стандарт штрих останется если не был показан)
 @router.callback_query(F.data == "show_price_vip")
 async def show_price_vip(callback: CallbackQuery):
     await callback.answer()
@@ -294,11 +293,13 @@ async def show_price_vip(callback: CallbackQuery):
     fourth_prices_state[chat_id] = state
 
     new_text = build_fourth_text(state["standard"], state["vip"])
+    new_kb = build_fourth_kb(state["standard"], state["vip"])
+
     await bot.edit_message_text(
         chat_id=chat_id,
         message_id=msg_id,
         text=new_text,
-        reply_markup=fourth_message_kb_no_price,
+        reply_markup=new_kb,
     )
 
 
