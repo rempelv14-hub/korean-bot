@@ -46,11 +46,16 @@ start_kb = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="🚀 Старт", callback_data="start_course")]]
 )
 
+# Кнопки для 4-го сообщения: тарифы + скрытая цена
 fourth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
-        [InlineKeyboardButton(text="Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
-        [InlineKeyboardButton(text="Оформить тариф «VIP»", url="https://t.me/minimalkor")],
-        [InlineKeyboardButton(text="Подписаться на канал", url="https://t.me/minimalkorean")],
+        [InlineKeyboardButton(text="💳 Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
+        [InlineKeyboardButton(text="💎 Оформить тариф «VIP»", url="https://t.me/minimalkor")],
+        [
+            InlineKeyboardButton(text="👀 Показать цену «Стандарт»", callback_data="show_price_standard"),
+            InlineKeyboardButton(text="👀 Показать цену «VIP»", callback_data="show_price_vip"),
+        ],
+        [InlineKeyboardButton(text="📌 Подписаться на канал", url="https://t.me/minimalkorean")],
     ]
 )
 
@@ -75,6 +80,48 @@ dp.include_router(router)
 
 # ================== ГЛОБАЛЬНЫЕ ДАННЫЕ ==================
 user_chain_tasks: dict[int, asyncio.Task] = {}
+
+# Храним id сообщения 4 для каждого пользователя, чтобы редактировать его
+user_fourth_msg_id: dict[int, int] = {}
+
+# ================== ТЕКСТ 4 СООБЩЕНИЯ ==================
+FOURTH_BASE_TEXT = (
+    "А все что в календаре, что ждёт тебя на курсе Система KOREAN MINIMAL 👇\n\n"
+    "На курсе за месяц ты:\n\n"
+    "▫️научишься быстро и правильно читать;\n"
+    "▫️начнёшь красиво писать и понимать логику языка;\n"
+    "▫️создашь личный план изучения корейского, который реально работает;\n"
+    "▫️начнёшь говорить на корейском уже в процессе обучения.\n\n"
+    "Курс состоит из 4 модулей:\n"
+    "🔹 Модуль 1 — Чтение\n"
+    "Освоение ассимиляции и произношения.\n"
+    "🔹 Модуль 2 — Словарный запас (300 слов)\n"
+    "Методы, практика, использование в диалогах.\n"
+    "🔹 Модуль 3 — Говорить без страха\n"
+    "Построение фраз, уверенная речь.\n"
+    "🔹 Модуль 4 — Скорочтение\n"
+    "Быстрое понимание текста и развитие скорости чтения.\n\n"
+    "Тариф “стандарт” включает:\n"
+    "📌 Большие выпуски о методах и правильном чтении\n"
+    "📌 16 уроков по словарному запасу\n"
+    "📌 8 уроков грамматики\n"
+    "📌 Видео-разборы корейских песен\n"
+    "📌 Марафон по словам и разговорной практике\n"
+    "📌 Обратная связь \n\n"
+    "Тариф “VIP” включает:\n"
+    "📌 Большие выпуски о методах и правильном чтении\n"
+    "📌 16 уроков по словарному запасу\n"
+    "📌 8 уроков грамматики\n"
+    "📌 Видео-разборы корейских песен\n"
+    "📌 Марафон по словам и разговорной практике\n"
+    "📌 2 вебинара от Микки сонсенним (в живое время)\n"
+    "📌 Обратная связь\n\n"
+    "Количество мест: 5\n\n"
+    "Нажми кнопку ниже, чтобы показать цену 👇"
+)
+
+PRICE_STANDARD = "Цена «Стандарт»: 12990 тенге / 1990 ₽ в месяц"
+PRICE_VIP = "Цена «VIP»: 24990 тенге / 3990 ₽ в месяц"
 
 # ================== СООБЩЕНИЯ ==================
 async def send_first(message: Message):
@@ -114,45 +161,10 @@ async def send_third(message: Message):
         await message.answer("⚠️ PDF не найден")
 
 
-# ================== ИЗМЕНЁННОЕ 4 СООБЩЕНИЕ ==================
+# ================== 4 СООБЩЕНИЕ (С ЦЕНОЙ ПО КНОПКЕ) ==================
 async def send_fourth(message: Message):
-    await message.answer(
-        "А все что в календаре, ждёт тебя на курсе Система KOREAN MINIMAL 👇\n"
-        "На курсе за месяц ты:\n"
-        "• научишься быстро и правильно читать;\n"
-        "• начнёшь красиво писать и понимать логику языка;\n"
-        "• создашь личный план изучения корейского, который реально работает;\n"
-        "• начнёшь говорить на корейском уже в процессе обучения.\n\n"
-        "Курс состоит из 4 модулей:\n"
-        "🔹 Модуль 1 — Чтение\n"
-        "Освоение ассимиляции и произношения.\n"
-        "🔹 Модуль 2 — Словарный запас (300 слов)\n"
-        "Методы, практика, использование в диалогах.\n"
-        "🔹 Модуль 3 — Говорить без страха\n"
-        "Построение фраз, уверенная речь.\n"
-        "🔹 Модуль 4 — Скорочтение\n"
-        "Быстрое понимание текста и развитие скорости чтения.\n"
-        "Тариф “стандарт” включает:\n"
-        "📌 Большие выпуски о методах и правильном чтении\n"
-        "📌 16 уроков по словарному запасу\n"
-        "📌 8 уроков грамматики\n"
-        "📌 Видео-разборы корейских песен\n"
-        "📌 Марафон по словам и разговорной практике\n"
-        "📌 Обратная связь от ментора\n"
-        "Цена: 12990 тенге/ 1990 ₽ в месяц\n"
-        "Тариф “VIP” включает:\n"
-        "📌 Большие выпуски о методах и правильном чтении\n"
-        "📌 16 уроков по словарному запасу\n"
-        "📌 8 уроков грамматики\n"
-        "📌 Видео-разборы корейских песен\n"
-        "📌 Марафон по словам и разговорной практике\n"
-        "📌 2 вебинара от Микки сонсенним\n"
-        "📌 Обратная связь от Микки сонсенним\n"
-        "Количество мест: 5\n"
-        "Цена: 24990 тенге/ 3990 ₽ в месяц\n"
-        "Кто готов, нажимайте кнопку👇",
-        reply_markup=fourth_message_kb,
-    )
+    sent = await message.answer(FOURTH_BASE_TEXT, reply_markup=fourth_message_kb)
+    user_fourth_msg_id[message.chat.id] = sent.message_id
 
 
 async def send_fifth(message: Message):
@@ -204,7 +216,6 @@ def start_chain(user_id: int, message: Message):
 
     user_chain_tasks[user_id] = asyncio.create_task(chain())
 
-
 # ================== ХЕНДЛЕРЫ ==================
 @router.message(CommandStart())
 async def start(message: Message):
@@ -221,6 +232,37 @@ async def start_course(callback: CallbackQuery):
 
     await send_second(callback.message)
     start_chain(callback.from_user.id, callback.message)
+
+
+# Нажал "Показать цену Стандарт" → редактируем 4-е сообщение и добавляем цену
+@router.callback_query(F.data == "show_price_standard")
+async def show_price_standard(callback: CallbackQuery):
+    await callback.answer()
+    chat_id = callback.message.chat.id
+    msg_id = user_fourth_msg_id.get(chat_id, callback.message.message_id)
+
+    new_text = FOURTH_BASE_TEXT + "\n\n" + PRICE_STANDARD
+    await bot.edit_message_text(
+        chat_id=chat_id,
+        message_id=msg_id,
+        text=new_text,
+        reply_markup=fourth_message_kb,
+    )
+
+# Нажал "Показать цену VIP" → редактируем 4-е сообщение и добавляем цену
+@router.callback_query(F.data == "show_price_vip")
+async def show_price_vip(callback: CallbackQuery):
+    await callback.answer()
+    chat_id = callback.message.chat.id
+    msg_id = user_fourth_msg_id.get(chat_id, callback.message.message_id)
+
+    new_text = FOURTH_BASE_TEXT + "\n\n" + PRICE_VIP
+    await bot.edit_message_text(
+        chat_id=chat_id,
+        message_id=msg_id,
+        text=new_text,
+        reply_markup=fourth_message_kb,
+    )
 
 
 # ================== WEB (Railway) ==================
@@ -246,4 +288,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
