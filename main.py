@@ -46,20 +46,20 @@ start_kb = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="🚀 Старт", callback_data="start_course")]]
 )
 
-# Кнопки для 4-го сообщения: тарифы + скрытая цена (с кнопками показа)
+# Кнопки для 4-го сообщения: тарифы + "штрихи" (вместо текста "показать цену")
 fourth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="💳 Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
         [InlineKeyboardButton(text="💎 Оформить тариф «VIP»", url="https://t.me/minimalkor")],
         [
-            InlineKeyboardButton(text="👀 Показать цену «Стандарт»", callback_data="show_price_standard"),
-            InlineKeyboardButton(text="👀 Показать цену «VIP»", callback_data="show_price_vip"),
+            InlineKeyboardButton(text="░░░░░░░░░░░░", callback_data="show_price_standard"),
+            InlineKeyboardButton(text="░░░░░░░░░░░░", callback_data="show_price_vip"),
         ],
         [InlineKeyboardButton(text="📌 Подписаться на канал", url="https://t.me/minimalkorean")],
     ]
 )
 
-# Кнопки для 4-го сообщения ПОСЛЕ ПОКАЗА ЦЕНЫ (без кнопок “Показать цену”)
+# Кнопки для 4-го сообщения ПОСЛЕ ПОКАЗА ЦЕНЫ (без "штрихов")
 fourth_message_kb_no_price = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="💳 Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -183,7 +183,7 @@ async def send_third(message: Message):
         await message.answer("⚠️ PDF не найден")
 
 
-# ================== 4 СООБЩЕНИЕ (С ЦЕНОЙ ПО КНОПКЕ) ==================
+# ================== 4 СООБЩЕНИЕ (С ЦЕНОЙ ПО "ШТРИХУ") ==================
 async def send_fourth(message: Message):
     # стартовое состояние: обе цены скрыты
     fourth_prices_state[message.chat.id] = {"standard": False, "vip": False}
@@ -262,7 +262,7 @@ async def start_course(callback: CallbackQuery):
     start_chain(callback.from_user.id, callback.message)
 
 
-# Нажал "Показать цену Стандарт" → раскрываем стандарт и УБИРАЕМ кнопки “Показать цену”
+# Нажал на "штрих" слева → раскрываем стандарт и УБИРАЕМ "штрихи"
 @router.callback_query(F.data == "show_price_standard")
 async def show_price_standard(callback: CallbackQuery):
     await callback.answer()
@@ -282,7 +282,7 @@ async def show_price_standard(callback: CallbackQuery):
     )
 
 
-# Нажал "Показать цену VIP" → раскрываем VIP и УБИРАЕМ кнопки “Показать цену”
+# Нажал на "штрих" справа → раскрываем VIP и УБИРАЕМ "штрихи"
 @router.callback_query(F.data == "show_price_vip")
 async def show_price_vip(callback: CallbackQuery):
     await callback.answer()
