@@ -43,6 +43,14 @@ start_kb = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="🚀 Старт", callback_data="start_course")]]
 )
 
+fourth_message_kb = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="💳 Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
+        [InlineKeyboardButton(text="💎 Оформить тариф «VIP»", url="https://t.me/minimalkor")],
+        [InlineKeyboardButton(text="📌 Подписаться на канал", url="https://t.me/minimalkorean")],
+    ]
+)
+
 fifth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оплатить «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -63,22 +71,19 @@ router = Router()
 dp.include_router(router)
 
 # ================== ЦЕНЫ ==================
-PRICE_STANDARD = "12990 тенге/ 1990 ₽ в месяц"
-PRICE_VIP = "24990 тенге/ 3990 ₽ в месяц"
+PRICE_STANDARD = "12990 тенге / 1990 ₽ в месяц"
+PRICE_VIP = "24990 тенге / 3990 ₽ в месяц"
 
-# ================== 4 СООБЩЕНИЕ (ФИНАЛЬНОЕ) ==================
+# ================== 4 СООБЩЕНИЕ (ИСПРАВЛЕНО ТОЛЬКО ОНО) ==================
 FOURTH_TEXT = (
     "А все что в календаре,ждёт тебя на курсе Система KOREAN MINIMAL 👇\n\n"
-    
     "На курсе за месяц ты:\n\n"
-    
     "▫️научишься быстро и правильно читать;\n"
     "▫️начнёшь красиво писать и понимать логику языка;\n"
     "▫️создашь личный план изучения корейского, который реально работает;\n"
     "▫️начнёшь говорить на корейском уже в процессе обучения.\n\n\n"
 
     "Курс состоит из 4 модулей:\n\n"
-    
     "🔹 Модуль 1 — Чтение\n"
     "Освоение ассимиляции и произношения.\n\n"
     "🔹 Модуль 2 — Словарный запас (300 слов)\n"
@@ -88,18 +93,18 @@ FOURTH_TEXT = (
     "🔹 Модуль 4 — Скорочтение\n"
     "Быстрое понимание текста и развитие скорости чтения.\n\n\n"
 
+
     "<b>Тариф “стандарт” включает:</b>\n"
-    
     "📌 Большие выпуски о методах и правильном чтении\n"
     "📌 16 уроков по словарному запасу\n"
     "📌 8 уроков грамматики\n"
     "📌 Видео-разборы корейских песен\n"
     "📌 Марафон по словам и разговорной практике\n"
     "📌 Обратная связь\n\n"
-    f"Цена: {PRICE_STANDARD}\n\n\n"
+    f"<b>Цена: {PRICE_STANDARD}</b>\n\n\n"
+
 
     "<b>Тариф “VIP” включает:</b>\n"
-   
     "📌 Большие выпуски о методах и правильном чтении\n"
     "📌 16 уроков по словарному запасу\n"
     "📌 8 уроков грамматики\n"
@@ -108,7 +113,7 @@ FOURTH_TEXT = (
     "📌 2 вебинара от Микки сонсенним (в живое время)\n"
     "📌 Обратная связь\n\n"
     "Количество мест: 5\n"
-    f"Цена: {PRICE_VIP}\n"
+    f"<b>Цена: {PRICE_VIP}</b>\n"
     "Кто готов, нажимайте кнопку👇"
 )
 
@@ -146,7 +151,7 @@ async def send_third(message: Message):
         await message.answer_document(FSInputFile(PDF_PATH))
 
 async def send_fourth(message: Message):
-    await message.answer(FOURTH_TEXT)
+    await message.answer(FOURTH_TEXT, reply_markup=fourth_message_kb)
 
 async def send_fifth(message: Message):
     await message.answer(
@@ -154,7 +159,8 @@ async def send_fifth(message: Message):
         "📅 Старт основной программы — 15 января.\n"
         "И уже 15го запускается марафон по пополнению словарного запаса.\n"
         "Мы не просто учим слова - мы учимся использовать их в речи.\n"
-        "Также начнем с козырей правильного произношения😎",
+        "Также начнем с козырей правильного произношения😎 Идеальное комбо\n"
+        "Правильное произношение + словарный запас",
         reply_markup=fifth_message_kb,
     )
 
