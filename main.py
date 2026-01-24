@@ -46,7 +46,7 @@ start_kb = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="🚀 Старт", callback_data="start_course")]]
 )
 
-# Кнопки для 4-го сообщения: тарифы + скрытая цена
+# Кнопки для 4-го сообщения: тарифы + скрытая цена (с кнопками показа)
 fourth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="💳 Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
@@ -55,6 +55,15 @@ fourth_message_kb = InlineKeyboardMarkup(
             InlineKeyboardButton(text="👀 Показать цену «Стандарт»", callback_data="show_price_standard"),
             InlineKeyboardButton(text="👀 Показать цену «VIP»", callback_data="show_price_vip"),
         ],
+        [InlineKeyboardButton(text="📌 Подписаться на канал", url="https://t.me/minimalkorean")],
+    ]
+)
+
+# Кнопки для 4-го сообщения ПОСЛЕ ПОКАЗА ЦЕНЫ (без кнопок “Показать цену”)
+fourth_message_kb_no_price = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="💳 Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
+        [InlineKeyboardButton(text="💎 Оформить тариф «VIP»", url="https://t.me/minimalkor")],
         [InlineKeyboardButton(text="📌 Подписаться на канал", url="https://t.me/minimalkorean")],
     ]
 )
@@ -84,7 +93,7 @@ user_chain_tasks: dict[int, asyncio.Task] = {}
 # Храним id сообщения 4 для каждого пользователя, чтобы редактировать его
 user_fourth_msg_id: dict[int, int] = {}
 
-# ================== 4 СООБЩЕНИЕ (ТОЛЬКО ОНО ИЗМЕНЕНО) ==================
+# ================== 4 СООБЩЕНИЕ (ТЕКСТ НЕ МЕНЯЕМ) ==================
 MASK = "░░░░░░░░░░░░░░░░░░░░░░░░"
 
 PRICE_STANDARD = "12990 тенге/ 1990 ₽ в месяц"
@@ -253,7 +262,7 @@ async def start_course(callback: CallbackQuery):
     start_chain(callback.from_user.id, callback.message)
 
 
-# Нажал "Показать цену Стандарт" → раскрываем ТОЛЬКО стандарт и она ОСТАЁТСЯ
+# Нажал "Показать цену Стандарт" → раскрываем стандарт и УБИРАЕМ кнопки “Показать цену”
 @router.callback_query(F.data == "show_price_standard")
 async def show_price_standard(callback: CallbackQuery):
     await callback.answer()
@@ -269,11 +278,11 @@ async def show_price_standard(callback: CallbackQuery):
         chat_id=chat_id,
         message_id=msg_id,
         text=new_text,
-        reply_markup=fourth_message_kb,
+        reply_markup=fourth_message_kb_no_price,
     )
 
 
-# Нажал "Показать цену VIP" → раскрываем ТОЛЬКО VIP и она ОСТАЁТСЯ
+# Нажал "Показать цену VIP" → раскрываем VIP и УБИРАЕМ кнопки “Показать цену”
 @router.callback_query(F.data == "show_price_vip")
 async def show_price_vip(callback: CallbackQuery):
     await callback.answer()
@@ -289,7 +298,7 @@ async def show_price_vip(callback: CallbackQuery):
         chat_id=chat_id,
         message_id=msg_id,
         text=new_text,
-        reply_markup=fourth_message_kb,
+        reply_markup=fourth_message_kb_no_price,
     )
 
 
