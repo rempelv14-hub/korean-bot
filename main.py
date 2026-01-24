@@ -14,34 +14,32 @@ from aiogram.types import (
 
 from aiohttp import web
 
-# ================== ЛОГИ ==================
+# ================== ЛОГИРОВАНИЕ ==================
 logging.basicConfig(level=logging.INFO)
 
 # ================== ТОКЕН ==================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise SystemExit("❌ BOT_TOKEN не найден")
+    logging.error("⚠️ BOT_TOKEN не найден!")
+    raise SystemExit("❌ Установите переменную окружения BOT_TOKEN")
 
 # ================== MEDIA ==================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MEDIA_DIR = os.path.join(BASE_DIR, "media")
 VIDEO_URL = "https://youtu.be/uKKyn7wCKXE?si=Klz0s_l-jsvJCVTv"
 
+
 def find_pdf():
     if not os.path.exists(MEDIA_DIR):
         return None
-    for f in os.listdir(MEDIA_DIR):
-        if f.lower().endswith(".pdf"):
-            return os.path.join(MEDIA_DIR, f)
+    for file in os.listdir(MEDIA_DIR):
+        if file.lower().endswith(".pdf"):
+            return os.path.join(MEDIA_DIR, file)
     return None
 
-PDF_PATH = find_pdf()
 
-# ================== BOT ==================
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
-router = Router()
-dp.include_router(router)
+PDF_PATH = find_pdf()
+logging.info(f"PDF найден: {PDF_PATH}")
 
 # ================== КНОПКИ ==================
 start_kb = InlineKeyboardMarkup(
@@ -58,6 +56,90 @@ fifth_message_kb = InlineKeyboardMarkup(
 sixth_message_kb = InlineKeyboardMarkup(
     inline_keyboard=[
         [InlineKeyboardButton(text="Оформить подписку", url="https://t.me/tribute/app?startapp=sK0H")]
+    ]
+)
+
+# ================== BOT ==================
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
+router = Router()
+dp.include_router(router)
+
+# ================== ГЛОБАЛЬНЫЕ ДАННЫЕ ==================
+user_chain_tasks: dict[int, asyncio.Task] = {}
+
+# Храним id сообщения 4 для каждого пользователя, чтобы редактировать его
+user_fourth_msg_id: dict[int, int] = {}
+
+# ================== 4 СООБЩЕНИЕ (ТОЛЬКО ОНО ИЗМЕНЕНО) ==================
+# Важно: слова не меняем, меняем ТОЛЬКО форматирование (чтобы не слипалось) + логика замазки.
+MASK_TEXT = "▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓"
+MASK_BTN  = "▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓"
+PRICE_STANDARD = "12990 тенге/ 1990 ₽ в месяц"
+PRICE_VIP = "24990 тенге/ 3990 ₽ в месяц"
+
+def build_fourth_text(show_prices: bool) -> str:
+    standard_price = PRICE_STANDARD if show_prices else MASK_TEXT
+    vip_price = PRICE_VIP if show_prices else MASK_TEXT
+
+    # Текст тот же, но добавлены пустые строки между блоками, чтобы НЕ слипалось
+    return (
+        "А все что в календаре,ждёт тебя на курсе Система KOREAN MINIMAL 👇\n\n"
+        
+        "На курсе за месяц ты:\n\n"
+        "▫️научишься быстро и правильно читать;\n"
+        "▫️начнёшь красиво писать и понимать логику языка;\n"
+        "▫️создашь личный план изучения корейского, который реально работает;\n"
+        "▫️начнёшь говорить на корейском уже в процессе обучения.\n\n\n"
+
+        
+        "Курс состоит из 4 модулей:\n\n"
+        "🔹 Модуль 1 — Чтение\n"
+        "Освоение ассимиляции и произношения.\n\n"
+        "🔹 Модуль 2 — Словарный запас (300 слов)\n"
+        "Методы, практика, использование в диалогах.\n\n"
+        "🔹 Модуль 3 — Говорить без страха\n"
+        "Построение фраз, уверенная речь.\n\n"
+        "🔹 Модуль 4 — Скорочтение\n"
+        "Быстрое понимание текста и развитие скорости чтения.\n\n\n"
+
+        
+        "Тариф “стандарт” включает:\n"
+        "📌 Большие выпуски о методах и правильном чтении\n"
+        "📌 16 уроков по словарному запасу\n"
+        "📌 8 уроков грамматики\n"
+        "📌 Видео-разборы корейских песен\n"
+        "📌 Марафон по словам и разговорной практике\n"
+        "📌 Обратная связь \n\n"
+        f"Цена: {standard_price}\n\n\n"
+
+        
+        "Тариф “VIP” включает:\n"
+        "📌 Большие выпуски о методах и правильном чтении\n"
+        "📌 16 уроков по словарному запасу\n"
+        "📌 8 уроков грамматики\n"
+        "📌 Видео-разборы корейских песен\n"
+        "📌 Марафон по словам и разговорной практике\n"
+        "📌 2 вебинара от Микки сонсенним (в живое время)\n"
+        "📌 Обратная связь\n\n"
+        "Количество мест: 5\n"
+        f"Цена: {vip_price}\n"
+        "Кто готов, нажимайте кнопку👇"
+    )
+
+# ОДНА кнопка-замазка (нажал один раз -> показались обе цены)
+fourth_mask_kb = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text=MASK_BTN, callback_data="show_all_prices")]
+    ]
+)
+
+# Кнопки ПОСЛЕ раскрытия (без "показать цену")
+fourth_final_kb = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="💳 Оформить тариф «Стандарт»", url="https://web.tribute.tg/s/K0H")],
+        [InlineKeyboardButton(text="💎 Оформить тариф «VIP»", url="https://t.me/minimalkor")],
+        [InlineKeyboardButton(text="📌 Подписаться на канал", url="https://t.me/minimalkorean")],
     ]
 )
 
@@ -91,54 +173,18 @@ async def send_third(message: Message):
         "Дарю календарь для изучения корейского.\n"
         "Он поможет дойти до 4го уровня системно и без срывов."
     )
-    if PDF_PATH:
+    if PDF_PATH and os.path.exists(PDF_PATH):
         await message.answer_document(FSInputFile(PDF_PATH))
+    else:
+        await message.answer("⚠️ PDF не найден")
 
-# ================== 4 СООБЩЕНИЕ (ТОЛЬКО ФОРМАТИРОВАНИЕ) ==================
+# ================== 4 СООБЩЕНИЕ (ЗАМАСКА + 1 КЛИК -> 2 ЦЕНЫ) ==================
 async def send_fourth(message: Message):
-    await message.answer(
-        "А все что в календаре,ждёт тебя на курсе Система KOREAN MINIMAL 👇\n\n"
-        
-        "На курсе за месяц ты:\n\n"
-        "▫️научишься быстро и правильно читать;\n"
-        "▫️начнёшь красиво писать и понимать логику языка;\n"
-        "▫️создашь личный план изучения корейского, который реально работает;\n"
-        "▫️начнёшь говорить на корейском уже в процессе обучения.\n\n\n"
-
-        
-        "Курс состоит из 4 модулей:\n\n"
-        "🔹 Модуль 1 — Чтение\n"
-        "Освоение ассимиляции и произношения.\n\n"
-        "🔹 Модуль 2 — Словарный запас (300 слов)\n"
-        "Методы, практика, использование в диалогах.\n\n"
-        "🔹 Модуль 3 — Говорить без страха\n"
-        "Построение фраз, уверенная речь.\n\n"
-        "🔹 Модуль 4 — Скорочтение\n"
-        "Быстрое понимание текста и развитие скорости чтения.\n\n\n"
-
-        
-        "Тариф “стандарт” включает:\n\n"
-        "📌 Большие выпуски о методах и правильном чтении\n"
-        "📌 16 уроков по словарному запасу\n"
-        "📌 8 уроков грамматики\n"
-        "📌 Видео-разборы корейских песен\n"
-        "📌 Марафон по словам и разговорной практике\n"
-        "📌 Обратная связь\n\n"
-        "Цена: 12990 тенге/ 1990 ₽ в месяц\n\n\n"
-
-        
-        "Тариф “VIP” включает:\n\n"
-        "📌 Большие выпуски о методах и правильном чтении\n"
-        "📌 16 уроков по словарному запасу\n"
-        "📌 8 уроков грамматики\n"
-        "📌 Видео-разборы корейских песен\n"
-        "📌 Марафон по словам и разговорной практике\n"
-        "📌 2 вебинара от Микки сонсенним (в живое время)\n"
-        "📌 Обратная связь\n\n"
-        "Количество мест: 5\n\n"
-        "Цена: 24990 тенге/ 3990 ₽ в месяц\n\n"
-        "Кто готов, нажимайте кнопку👇"
+    sent = await message.answer(
+        build_fourth_text(False),
+        reply_markup=fourth_mask_kb
     )
+    user_fourth_msg_id[message.chat.id] = sent.message_id
 
 async def send_fifth(message: Message):
     await message.answer(
@@ -158,10 +204,36 @@ async def send_sixth(message: Message):
         "Благодаря которому сейчас владею 6 уровнем ТOPIK, работала переводчиком в нефтяной компании.\n\n"
         "Главный результат:\n"
         "Полюбить логичный корейский язык\n"
+        
         "Пройти 1 уровень и увидеть результат\n"
         "Цена: 12990 тенге / 1990 ₽",
         reply_markup=sixth_message_kb,
     )
+
+# ================== ЦЕПОЧКА ==================
+def start_chain(user_id: int, message: Message):
+    old_task = user_chain_tasks.get(user_id)
+    if old_task and not old_task.done():
+        old_task.cancel()
+
+    async def chain():
+        try:
+            await asyncio.sleep(5 * 60)
+            await send_third(message)
+
+            await asyncio.sleep(5 * 60)
+            await send_fourth(message)
+
+            await asyncio.sleep(3 * 60 * 60 - 10 * 60)
+            await send_fifth(message)
+
+            await asyncio.sleep(3 * 24 * 60 * 60)
+            await send_sixth(message)
+
+        except asyncio.CancelledError:
+            logging.info(f"[{user_id}] Цепочка отменена")
+
+    user_chain_tasks[user_id] = asyncio.create_task(chain())
 
 # ================== ХЕНДЛЕРЫ ==================
 @router.message(CommandStart())
@@ -171,23 +243,43 @@ async def start(message: Message):
 @router.callback_query(F.data == "start_course")
 async def start_course(callback: CallbackQuery):
     await callback.answer()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
     await send_second(callback.message)
-    await send_third(callback.message)
-    await send_fourth(callback.message)
-    await send_fifth(callback.message)
-    await send_sixth(callback.message)
+    start_chain(callback.from_user.id, callback.message)
 
-# ================== WEB ==================
+# Нажал на замазку -> показываем ОБЕ цены и убираем замазку
+@router.callback_query(F.data == "show_all_prices")
+async def show_all_prices(callback: CallbackQuery):
+    await callback.answer()
+    chat_id = callback.message.chat.id
+    msg_id = user_fourth_msg_id.get(chat_id, callback.message.message_id)
+
+    await bot.edit_message_text(
+        chat_id=chat_id,
+        message_id=msg_id,
+        text=build_fourth_text(True),
+        reply_markup=fourth_final_kb,
+    )
+
+# ================== WEB (Railway) ==================
 async def health(request: web.Request):
-    return web.Response(text="OK")
+    return web.Response(text="Bot is running!")
 
-async def main():
+async def start_web_server():
     app = web.Application()
     app.router.add_get("/", health)
+    port = int(os.environ.get("PORT", "8080"))
     runner = web.AppRunner(app)
     await runner.setup()
-    await web.TCPSite(runner, "0.0.0.0", int(os.environ.get("PORT", 8080))).start()
+    await web.TCPSite(runner, "0.0.0.0", port).start()
 
+# ================== ЗАПУСК ==================
+async def main():
+    await start_web_server()
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
