@@ -104,7 +104,7 @@ async def send_third(message: Message):
 
 async def send_fourth(message: Message):
     await message.answer(
-        "А все что в календаре,ждёт тебя на курсе Система KOREAN MINIMAL 👇\n\n"
+        "А все что в календаре,ждёт тебя на курсе Система KOREAN MINIMAL  👇\n\n"
         "На курсе за месяц ты:\n\n"
         "▫️научишься быстро и правильно читать;\n"
         "▫️начнёшь красиво писать и понимать логику языка;\n"
@@ -220,5 +220,6 @@ def home():
 
 if __name__ == "__main__":
     asyncio.run(start_bot())
+
 
 
